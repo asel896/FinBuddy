@@ -1,2 +1,11 @@
-.env
+# Python sanal ortamı
+backend/venv/
+backend/.venv/
 __pycache__/
+*.py[cod]
+
+# Çevresel değişkenler (Şifreler/Anahtarlar)
+.env
+
+# Docker logları
+*.log
