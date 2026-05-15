@@ -9,3 +9,5 @@ __pycache__/
 
 # Docker logları
 *.log
+
+*.pyc
