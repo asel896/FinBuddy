@@ -6,15 +6,14 @@ from datetime import datetime
 Base = declarative_base()
 
 class Transaction(Base):
-    """Harcamalar ve Gelirler"""
     __tablename__ = "transactions"
 
     id = Column(Integer, primary_key=True, index=True)
-    amount = Column(Float, nullable=False)
-    category = Column(String)  # Yemek, Market, Kira, Maaş vb.
-    description = Column(String) # "Arkadaşlarla akşam yemeği"
-    type = Column(String)      # "expense" (gider) veya "income" (gelir)
-    mood = Column(String)      # Mutlu, Üzgün, Stresli (Harcama anındaki his)
+    amount = Column(Float)
+    category = Column(String)
+    description = Column(String)
+    type = Column(String) # expense veya income
+    mood = Column(String, nullable=True)  # <-- BU SATIRI EKLE
     date = Column(DateTime, default=datetime.utcnow)
 
 class Goal(Base):

@@ -10,12 +10,10 @@ import io
 import pandas as pd
 from typing import Optional
 from pydantic import BaseModel
-import os
 import google.generativeai as genai
+import os
 
-# --- 1. AI YAPILANDIRMASI ---
-# BURAYI KONTROL ET: API Key tırnak içinde olmalı!
-genai.configure(api_key="AIzaSyA747iA9oMD4FYIebxlgiurU-TOabuhrMQ") 
+genai.configure(api_key=os.getenv("GEMINI_API_KEY")) 
 
 generation_config = {
     "temperature": 0.8,
@@ -30,7 +28,7 @@ model = genai.GenerativeModel(
     generation_config=generation_config,
 )
 
-# --- 2. APP TANIMI (TEK SEFER) ---
+# APP TANIMI 
 app = FastAPI(
     title="FinBuddy API",
     description="Yapay Zeka Destekli Kişisel Finans Asistanı",
@@ -55,12 +53,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 3. VERİ MODELLERİ ---
+# VERİ MODELLERİ 
 class BudgetStatus(BaseModel):
     limit: float
     spent: float
 
-# --- 4. ENDPOINTLER ---
+# ENDPOINTLER 
 
 @app.get("/", tags=["General"])
 async def welcome():
@@ -78,14 +76,42 @@ async def system_status():
         "database_connection": "successful"
     }
 
-@app.post("/transactions", tags=["Finance"])
-def create_transaction(amount: float, category: str, description: str, db: Session = Depends(get_db)):
-    new_item = models.Transaction(amount=amount, category=category, description=description, type="expense")
+@app.post("/transactions/mood", tags=["Finance"])
+async def create_mood_transaction(
+    amount: float, 
+    description: str, 
+    mood: str, # Kullanıcıdan "Mutlu", "Üzgün" gibi bir bilgi alıyoruz
+    db: Session = Depends(get_db)
+):
+    # Gemini kategoriyi tahmin etsin
+    prompt_cat = f"'{description}' harcaması için tek kelimelik bir kategori söyle."
+    category = model.generate_content(prompt_cat).text.strip()
+
+    # Yeni harcamayı mood ile birlikte kaydediyoruz
+    new_item = models.Transaction(
+        amount=amount, 
+        category=category, 
+        description=description, 
+        mood=mood, 
+        type="expense"
+    )
+
+    # Gemini'den ruh haline göre iğneleyici bir yorum alalım
+    prompt_mood = (
+        f"Kullanıcı '{mood}' bir ruh haliyle '{description}' için {amount} TL harcadı. "
+        "Buna çok kısa, esprili bir finansal tepki ver."
+    )
+    ai_comment = model.generate_content(prompt_mood).text
+
     db.add(new_item)
     db.commit()
     db.refresh(new_item)
-    return {"message": "Harcama kaydedildi!", "data": new_item}
-
+    
+    return {
+        "message": "Duygusal harcaman kaydedildi!",
+        "ai_mood_comment": ai_comment,
+        "data": new_item
+    }
 @app.post("/ask", tags=["AI"])
 async def ask_ai(prompt: str = Body(..., embed=True), db: Session = Depends(get_db)):
     history = db.query(models.Transaction).limit(5).all()
@@ -140,7 +166,6 @@ async def check_budget(status: BudgetStatus):
             # Eğer Gemini'den boş veya hatalı yanıt gelirse diye kontrol
             ai_advice = response.text if response.text else "AI bir cevap üretemedi."
         except Exception as e:
-            # HATAYI GÖRMEK İÇİN BURAYI DEĞİŞTİRDİM
             ai_advice = f"TEKNİK HATA: {str(e)}"
 
         return {
@@ -153,3 +178,64 @@ async def check_budget(status: BudgetStatus):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+
+@app.get("/analysis/weekly", tags=["AI"])
+async def get_weekly_analysis(db: Session = Depends(get_db)):
+    # Veritabanındaki tüm harcamaları çekiyoruz
+    transactions = db.query(models.Transaction).all()
+    
+    if not transactions:
+        return {"message": "Henüz analiz edecek veri yok."}
+
+    # Gemini'ye göndermek için veriyi metne döküyoruz
+    data_summary = "\n".join([f"- {t.category}: {t.amount} TL ({t.description})" for t in transactions])
+    
+    prompt = (
+        f"Aşağıda bir kullanıcının harcama listesi var:\n{data_summary}\n\n"
+        "Sen sivri dilli bir finans danışmanısın. Bu harcamaları analiz et. "
+        "Hangi kategoride aşırıya kaçılmış? Nereden tasarruf edebilir? "
+        "Kısa, iğneleyici ve esprili bir paragraf yaz."
+    )
+
+    try:
+        response = model.generate_content(prompt)
+        analysis = response.text
+    except Exception as e:
+        analysis = "Analiz motoru şu an meşgul, sonra gel."
+
+    return {
+        "summary_data": data_summary,
+        "ai_critique": analysis
+    }
+
+@app.get("/coach/advice", tags=["AI"])
+async def get_coaching_advice(db: Session = Depends(get_db)):
+    # Veritabanından hedefleri ve harcamaları çek
+    goals = db.query(models.Goal).all()
+    transactions = db.query(models.Transaction).all()
+    
+    if not goals:
+        return {"message": "Henüz bir tasarruf hedefin yok. Önce bir hedef belirle!"}
+
+    total_spent = sum(t.amount for t in transactions)
+    goal_summary = "\n".join([f"- {g.name}: Hedef {g.target_amount} TL, Şu an {g.current_amount} TL" for g in goals])
+
+    prompt = (
+        f"Kullanıcının tasarruf hedefleri şunlar:\n{goal_summary}\n"
+        f"Şu ana kadar toplam harcaması: {total_spent} TL.\n"
+        "Sen bilgili ama sivri dilli bir finans koçusun. Kullanıcıya hedeflerine ulaşması için "
+        "gerçekçi ama sert bir tavsiye ver. Hangi gereksiz harcamadan kaçınmalı? "
+        "Tahminen ne kadar sürede hedefine ulaşır? (Kısa ve öz olsun)"
+    )
+
+    try:
+        response = model.generate_content(prompt)
+        advice = response.text
+    except:
+        advice = "Koç şu an molada, az sonra gel."
+
+    return {
+        "status": "Koç Analizi Hazır",
+        "coaching_advice": advice
+    }
