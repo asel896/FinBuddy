@@ -6,6 +6,10 @@ import time
 from sqlalchemy.exc import OperationalError
 from app.agent.ai_engine import get_financial_advice 
 from sqlalchemy.orm import Session
+import io
+import pandas as pd
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from typing import Optional
 
 
 models.Base.metadata.create_all(bind=engine)
@@ -129,4 +133,31 @@ def get_summary(db: Session = Depends(get_db)):
 
 
 
+# CSV Yükleme ve Özet Analiz
+@app.post("/upload-csv/")
+async def upload_csv(file: UploadFile = File(...)):
+    # Dosya uzantısı kontrolü
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Sadece CSV dosyaları kabul edilir.")
+    
+    try:
+        # Dosyayı oku
+        contents = await file.read()
+        df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
+        
 
+        if 'category' not in df.columns or 'amount' not in df.columns:
+            return {
+                "error": "CSV dosyası 'category' ve 'amount' sütunlarını içermelidir.",
+                "found_columns": list(df.columns)
+            }
+
+        summary = df.groupby('category')['amount'].sum().to_dict()
+        
+        return {
+            "filename": file.filename,
+            "message": "Analiz başarıyla tamamlandı.",
+            "category_totals": summary
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Dosya işlenirken hata oluştu: {str(e)}")
