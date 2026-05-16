@@ -1,93 +1,41 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import "./ReceiptPanel.css";
-import Lottie from "react-lottie-player";
 import LottieIcon from "./LottieIcon";
 import animScan from "../animations/receipt.json";
 
 // ── Kategori renk haritası ──
 const CATEGORY_COLORS = {
-  "Market":     "#14b8a6",
-  "Yemek":      "#f59e0b",
-  "İçecek":     "#8b5cf6",
-  "Temizlik":   "#3b82f6",
+  "Market":        "#14b8a6",
+  "Yemek":         "#f59e0b",
+  "İçecek":        "#8b5cf6",
+  "Temizlik":      "#3b82f6",
   "Kişisel Bakım": "#ec4899",
-  "Elektronik": "#06b6d4",
-  "Giyim":      "#f97316",
-  "Fatura":     "#ef4444",
-  "Ulaşım":     "#84cc16",
-  "Eğlence":    "#a855f7",
-  "Sağlık":     "#22c55e",
-  "Diğer":      "#6b7280",
+  "Elektronik":    "#06b6d4",
+  "Giyim":         "#f97316",
+  "Fatura":        "#ef4444",
+  "Ulaşım":        "#84cc16",
+  "Eğlence":       "#a855f7",
+  "Sağlık":        "#22c55e",
+  "Diğer":         "#6b7280",
 };
 
-// ── Gemini API çağrısı ──
-const analyzeWithGemini = async (file, apiKey) => {
-  // Dosyayı base64'e çevir
-  const base64 = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(",")[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+// ── Backend endpoint üzerinden Gemini API çağrısı ──
+// API key burada yok — sunucuda .env içinde saklanır
+const analyzeReceipt = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch("/api/analyze-receipt", {
+    method: "POST",
+    body: formData,
   });
 
-  const isPdf = file.type === "application/pdf";
-  const mimeType = isPdf ? "application/pdf" : file.type;
-
-  const prompt = `Bu bir market fişi, restoran fişi veya faturadır. Lütfen aşağıdaki JSON formatında analiz et:
-
-{
-  "merchant": "İşyeri/Market adı (bulunamazsa 'Bilinmiyor')",
-  "date": "Tarih (bulunamazsa bugünün tarihi)",
-  "items": [
-    {
-      "name": "Ürün/kalem adı",
-      "price": 12.50,
-      "category": "Kategori (Market/Yemek/İçecek/Temizlik/Kişisel Bakım/Elektronik/Giyim/Fatura/Ulaşım/Eğlence/Sağlık/Diğer)"
-    }
-  ],
-  "total": 125.50
-}
-
-Önemli kurallar:
-- Sadece JSON döndür, başka hiçbir şey yazma
-- Fiyatlar sayı olsun (string değil)
-- Her kalemi ayrı bir item olarak listele
-- Toplam tutarı da hesapla
-- Kategoriyi içeriğe göre mantıklı seç`;
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { inline_data: { mime_type: mimeType, data: base64 } },
-              { text: prompt },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 2048,
-        },
-      }),
-    }
-  );
-
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err?.error?.message || "Gemini API hatası");
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.message || `Sunucu hatası: ${response.status}`);
   }
 
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-
-  // JSON'u temizle ve parse et
-  const clean = text.replace(/```json|```/g, "").trim();
-  return JSON.parse(clean);
+  return await response.json(); // { merchant, date, items, total }
 };
 
 // ── Dosya boyutunu formatla ──
@@ -97,19 +45,50 @@ const formatSize = (bytes) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+// ── Geçmiş taramaları localStorage'a kaydet / yükle ──
+const HISTORY_KEY = "receipt_scan_history";
+
+const loadHistory = () => {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+  } catch {
+    return [];
+  }
+};
+
+const saveToHistory = (result) => {
+  const history = loadHistory();
+  const entry = {
+    id: Date.now(),
+    merchant: result.merchant || "Bilinmiyor",
+    date: result.date || new Date().toLocaleDateString("tr-TR"),
+    itemCount: result.items?.length || 0,
+    total: result.items?.reduce((s, i) => s + (i.price || 0), 0) || 0,
+    scannedAt: new Date().toLocaleString("tr-TR"),
+  };
+  const updated = [entry, ...history].slice(0, 20); // max 20 kayıt
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+  return updated;
+};
+
 // ────────────────────────────────────────────────
 const ReceiptPanel = ({ setExpenses }) => {
-  const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null); // resimler için
-  const [dragOver, setDragOver] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [result, setResult] = useState(null);   // Gemini sonucu
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [file, setFile]               = useState(null);
+  const [preview, setPreview]         = useState(null);
+  const [dragOver, setDragOver]       = useState(false);
+  const [analyzing, setAnalyzing]     = useState(false);
+  const [result, setResult]           = useState(null);
+  const [error, setError]             = useState(null);
+  const [success, setSuccess]         = useState(false);
+  const [history, setHistory]         = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   const inputRef = useRef(null);
+
+  // Sayfa açılınca geçmişi yükle
+  useEffect(() => {
+    setHistory(loadHistory());
+  }, []);
 
   // ── Dosya seçimi ──
   const handleFile = useCallback((selectedFile) => {
@@ -154,17 +133,15 @@ const ReceiptPanel = ({ setExpenses }) => {
   // ── Analiz ──
   const handleAnalyze = async () => {
     if (!file) return;
-    if (!apiKey.trim()) {
-      setError({ title: "API anahtarı gerekli", msg: "Gemini API anahtarını gir. Google AI Studio'dan ücretsiz alabilirsin." });
-      return;
-    }
     setAnalyzing(true);
     setError(null);
     setResult(null);
 
     try {
-      const parsed = await analyzeWithGemini(file, apiKey.trim());
+      const parsed = await analyzeReceipt(file);
       setResult(parsed);
+      const updated = saveToHistory(parsed);
+      setHistory(updated);
     } catch (err) {
       setError({ title: "Analiz başarısız", msg: err.message || "Bir hata oluştu, tekrar dene." });
     }
@@ -194,6 +171,18 @@ const ReceiptPanel = ({ setExpenses }) => {
     if (inputRef.current) inputRef.current.value = "";
   };
 
+  // ── Geçmiş kaydı sil ──
+  const handleDeleteHistory = (id) => {
+    const updated = history.filter((h) => h.id !== id);
+    setHistory(updated);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+  };
+
+  const handleClearHistory = () => {
+    setHistory([]);
+    localStorage.removeItem(HISTORY_KEY);
+  };
+
   const totalAmount = result?.items?.reduce((s, i) => s + (i.price || 0), 0) ?? 0;
 
   return (
@@ -206,37 +195,6 @@ const ReceiptPanel = ({ setExpenses }) => {
             <h2>Fiş & Fatura Analizi</h2>
             <p>Fotoğraf veya PDF yükle, kalemleri otomatik ayıralım</p>
           </div>
-        </div>
-
-        {/* ── Gemini API Key alanı ── */}
-        <div style={{
-          padding: "14px 16px",
-          background: "rgba(255,255,255,0.03)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: 12,
-          marginBottom: 16,
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-        }}>
-          <span style={{ fontSize: 18 }}>🔑</span>
-          <input
-            className="db-inp"
-            type={showApiKey ? "text" : "password"}
-            placeholder="Gemini API anahtarını gir (AIza...)"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            style={{ flex: 1, background: "transparent", border: "none", padding: "0" }}
-          />
-          <button
-            onClick={() => setShowApiKey(!showApiKey)}
-            style={{
-              background: "transparent", border: "none",
-              color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: 13,
-            }}
-          >
-            {showApiKey ? "Gizle" : "Göster"}
-          </button>
         </div>
       </div>
 
@@ -253,8 +211,8 @@ const ReceiptPanel = ({ setExpenses }) => {
           {!file ? (
             <>
               <div className="upload-icon-lottie">
-  <LottieIcon animationData={animScan} size={64} autoplay loop />
-</div>
+                <LottieIcon animationData={animScan} size={64} autoplay loop />
+              </div>
               <div className="upload-title">Fiş veya fatura yükle</div>
               <div className="upload-sub">Sürükle bırak ya da tıkla</div>
               <div className="upload-types">
@@ -298,9 +256,9 @@ const ReceiptPanel = ({ setExpenses }) => {
       {/* ── Analiz butonu ── */}
       {file && !analyzing && !result && !success && (
         <div className="analyze-row">
-          <button className="analyze-btn" onClick={handleAnalyze} disabled={!apiKey.trim()}>
+          <button className="analyze-btn" onClick={handleAnalyze}>
             <span>✨</span>
-            Gemini ile Analiz Et
+            Analiz Et
           </button>
         </div>
       )}
@@ -311,7 +269,7 @@ const ReceiptPanel = ({ setExpenses }) => {
           <div className="analyzing-spinner" />
           <div className="analyzing-text">
             <strong>Analiz ediliyor...</strong>
-            Gemini fişi okuyup kalemleri ayırıyor
+            Fiş okunuyor, kalemler ayrıştırılıyor
           </div>
         </div>
       )}
@@ -334,7 +292,6 @@ const ReceiptPanel = ({ setExpenses }) => {
             </div>
           </div>
 
-          {/* Market / işyeri özeti */}
           <div className="receipt-summary">
             <div className="receipt-summary-icon">🏪</div>
             <div className="receipt-summary-info">
@@ -346,7 +303,6 @@ const ReceiptPanel = ({ setExpenses }) => {
             </div>
           </div>
 
-          {/* Kalemler */}
           <div className="receipt-items">
             {result.items?.map((item, i) => (
               <div key={i} className="receipt-item">
@@ -363,7 +319,6 @@ const ReceiptPanel = ({ setExpenses }) => {
             ))}
           </div>
 
-          {/* Onay butonları */}
           <div className="confirm-row">
             <button className="confirm-btn primary" onClick={handleConfirm}>
               ✅ Harcamalara Ekle ({result.items?.length} kalem)
@@ -386,6 +341,165 @@ const ReceiptPanel = ({ setExpenses }) => {
           </button>
         </div>
       )}
+
+      {/* ── Geçmiş Taramalar ── */}
+      <div className="history-section" style={{ margin: "28px 28px 0", paddingBottom: 28 }}>
+        <div
+          className="history-header"
+          onClick={() => setShowHistory(!showHistory)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            cursor: "pointer",
+            padding: "14px 16px",
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: showHistory ? "12px 12px 0 0" : 12,
+            userSelect: "none",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 16 }}>🕓</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>
+              Geçmiş Taramalar
+            </span>
+            {history.length > 0 && (
+              <span style={{
+                background: "rgba(255,255,255,0.1)",
+                borderRadius: 20,
+                fontSize: 11,
+                padding: "2px 8px",
+                color: "rgba(255,255,255,0.5)",
+              }}>
+                {history.length}
+              </span>
+            )}
+          </div>
+          <span style={{
+            fontSize: 11,
+            color: "rgba(255,255,255,0.3)",
+            transform: showHistory ? "rotate(180deg)" : "none",
+            transition: "transform 0.2s",
+            display: "inline-block",
+          }}>
+            ▼
+          </span>
+        </div>
+
+        {showHistory && (
+          <div style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderTop: "none",
+            borderRadius: "0 0 12px 12px",
+            overflow: "hidden",
+          }}>
+            {history.length === 0 ? (
+              <div style={{
+                padding: "28px 16px",
+                textAlign: "center",
+                color: "rgba(255,255,255,0.25)",
+                fontSize: 13,
+              }}>
+                Henüz tarama yapılmadı
+              </div>
+            ) : (
+              <>
+                <div style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  padding: "8px 12px",
+                  borderBottom: "1px solid rgba(255,255,255,0.05)",
+                }}>
+                  <button
+                    onClick={handleClearHistory}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "rgba(255,100,100,0.5)",
+                      fontSize: 12,
+                      cursor: "pointer",
+                      padding: "4px 8px",
+                    }}
+                  >
+                    Tümünü Temizle
+                  </button>
+                </div>
+
+                {history.map((entry) => (
+                  <div
+                    key={entry.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "12px 16px",
+                      borderBottom: "1px solid rgba(255,255,255,0.04)",
+                    }}
+                  >
+                    <div style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      background: "rgba(255,255,255,0.06)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 16,
+                      flexShrink: 0,
+                    }}>
+                      🧾
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "rgba(255,255,255,0.85)",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}>
+                        {entry.merchant}
+                      </div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>
+                        {entry.scannedAt} · {entry.itemCount} kalem
+                      </div>
+                    </div>
+
+                    <div style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: "rgba(255,255,255,0.6)",
+                      flexShrink: 0,
+                    }}>
+                      {entry.total.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL
+                    </div>
+
+                    <button
+                      onClick={() => handleDeleteHistory(entry.id)}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "rgba(255,255,255,0.15)",
+                        cursor: "pointer",
+                        fontSize: 16,
+                        padding: "4px",
+                        lineHeight: 1,
+                        flexShrink: 0,
+                      }}
+                      title="Sil"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
     </div>
   );
 };

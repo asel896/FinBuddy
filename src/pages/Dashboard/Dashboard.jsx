@@ -1,6 +1,10 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Dashboard.css";
+import "./components/Profilecard.css";
+import "./components/Exportfab.css";
+
+
 
 // Shared
 import LottieIcon from "./components/LottieIcon";
@@ -42,8 +46,8 @@ const MOCK_EXPENSES = [
 ];
 
 const MOCK_GOALS = [
-  { id: 1, name: "iPhone Almak", current: 10800, target: 15000, color: "#14b8a6" },
-  { id: 2, name: "Yaz Tatili",   current: 3200,  target: 8000,  color: "#8b5cf6" },
+  { id: 1, name: "iPhone Almak", current: 10800, target: 15000, color: "#14b8a6", animationData: null },
+  { id: 2, name: "Yaz Tatili",   current: 3200,  target: 8000,  color: "#8b5cf6", animationData: null },
 ];
 
 const BUDGET = 3000;
@@ -122,7 +126,6 @@ const SidebarExport = ({ expenses, goals }) => {
     </div>
   );
 };
-
 // ─────────────────────────────────────────────────────────────────
 
 const Dashboard = () => {
@@ -134,6 +137,7 @@ const Dashboard = () => {
   const { toasts, removeToast, success, error, warning } = useToast();
 
   const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
+  const budgetPct  = Math.min((totalSpent / BUDGET) * 100, 100);
 
   const handleSetExpenses = (updater) => {
     setExpenses((prev) => {
@@ -206,7 +210,14 @@ const Dashboard = () => {
         {activeTab === "expenses" && (
           <ExpensesPanel expenses={expenses} setExpenses={handleSetExpenses} />
         )}
-        {activeTab === "goals" && <GoalsPanel goals={goals} setGoals={setGoals} />}
+        {activeTab === "goals" && (
+          <GoalsPanel
+            expenses={expenses}
+            budget={BUDGET}
+            goals={goals}
+            setGoals={setGoals}
+          />
+        )}
         {activeTab === "insights" && <InsightsPanel />}
         {activeTab === "receipt" && (
           <ReceiptPanel setExpenses={handleSetExpenses} />
