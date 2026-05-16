@@ -135,7 +135,6 @@ const Dashboard = () => {
   const { toasts, removeToast, success, error, warning } = useToast();
 
   const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
-  const budgetPct  = Math.min((totalSpent / BUDGET) * 100, 100);
 
   const handleSetExpenses = (updater) => {
     setExpenses((prev) => {
@@ -163,9 +162,10 @@ const Dashboard = () => {
     <div className="db-root">
       {/* ── SIDEBAR ── */}
       <aside className="sidebar">
+
+        {/* Sadece yazı — logo artık ProfileCard'da */}
         <div className="sidebar-brand">
-          <LottieIcon animationData={animOctopus} size={36} />
-          <span className="sidebar-title">BuddyOcto</span>
+          <span className="sidebar-title">FinBuddy</span>
         </div>
 
         <ProfileCard

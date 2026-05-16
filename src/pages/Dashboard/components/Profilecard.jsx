@@ -1,5 +1,5 @@
 import "./ProfileCard.css";
-
+import defaultLogo from "../../../assets/logo.webp";
 const ProfileCard = ({
   name = "Kullanıcı",
   email = "kullanici@email.com",
@@ -8,13 +8,6 @@ const ProfileCard = ({
   monthlyBudget = 0,
   currency = "₺",
 }) => {
-  const initials = name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-
   const usagePercent =
     monthlyBudget > 0
       ? Math.min(100, Math.round((monthlyTotal / monthlyBudget) * 100))
@@ -26,11 +19,16 @@ const ProfileCard = ({
   return (
     <div className="profile-card">
       <div className="pc-avatar-wrapper">
+        {/* Avatar: önce avatarUrl, yoksa logo, yoksa initials */}
         {avatarUrl ? (
-          <img src={avatarUrl} alt={name} className="pc-avatar-img" />
-        ) : (
-          <div className="pc-avatar-initials">{initials}</div>
-        )}
+  <img src={avatarUrl} alt={name} className="pc-avatar-img" />
+) : (
+  <img
+    src={defaultLogo} // Değişen satır: string yerine import edilen değişken
+    alt="BuddyOcto"
+    className="pc-avatar-img pc-avatar-logo"
+  />
+)}
         <div className="pc-status-dot" style={{ background: statusColor }} />
       </div>
 

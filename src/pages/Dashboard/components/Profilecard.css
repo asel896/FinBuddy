@@ -114,3 +114,16 @@
   color: #666;
   text-align: right;
 }
+.pc-avatar-wrapper {
+  position: relative;
+  width: 90px;   /* 72 → 90 */
+  height: 90px;  /* 72 → 90 */
+}
+
+.pc-avatar-img,
+.pc-avatar-initials {
+  width: 90px;   /* 72 → 90 */
+  height: 90px;  /* 72 → 90 */
+  border-radius: 50%;
+  object-fit: cover;
+}

@@ -64,7 +64,7 @@ const ExpensesPanel = ({ expenses, setExpenses }) => {
       </div>
 
       {/* ── Aylık grafik ── */}
-      <MonthlyExpensesChart />
+    <MonthlyExpensesChart expenses={expenses} />
 
       {/* ── Harcama ekleme formu ── */}
       {showAddExpense && (
