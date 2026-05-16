@@ -4,8 +4,6 @@ import "./Dashboard.css";
 import "./components/Profilecard.css";
 import "./components/Exportfab.css";
 
-
-
 // Shared
 import LottieIcon from "./components/LottieIcon";
 
@@ -52,7 +50,7 @@ const MOCK_GOALS = [
 
 const BUDGET = 3000;
 
-// ── Sidebar Export bileşeni ────────────────────────────────────────
+// ── Sidebar Export bileşeni ──────────────────────────────────────
 const SidebarExport = ({ expenses, goals }) => {
   const [done, setDone] = useState(null);
 
@@ -126,7 +124,7 @@ const SidebarExport = ({ expenses, goals }) => {
     </div>
   );
 };
-// ─────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -218,7 +216,9 @@ const Dashboard = () => {
             setGoals={setGoals}
           />
         )}
-        {activeTab === "insights" && <InsightsPanel />}
+        {activeTab === "insights" && (
+          <InsightsPanel expenses={expenses} />
+        )}
         {activeTab === "receipt" && (
           <ReceiptPanel setExpenses={handleSetExpenses} />
         )}
