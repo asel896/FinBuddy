@@ -484,6 +484,65 @@ async def export_csv(db: Session = Depends(get_db), token: str = Depends(oauth2_
     return response
 
 
+@app.get("/transactions/", tags=["Finance"])
+async def get_transactions(
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        current_user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == current_user_email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token.")
+
+    transactions = db.query(models.Transaction).filter(models.Transaction.user_id == user.id).order_by(models.Transaction.id.desc()).all()
+    
+    formatted_transactions = []
+    for t in transactions:
+        formatted_transactions.append({
+            "id": t.id,
+            "desc": t.description,
+            "amount": t.amount,
+            "category": t.category if t.category else "Genel",
+            "date": "Bugün",
+            "mood": t.mood if t.mood else "😊",
+            "color": "#14b8a6"
+        })
+        
+    return formatted_transactions
+
+@app.delete("/transactions/{transaction_id}", tags=["Finance"])
+async def delete_transaction(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        current_user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == current_user_email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token.")
+
+    transaction = db.query(models.Transaction).filter(
+        models.Transaction.id == transaction_id,
+        models.Transaction.user_id == user.id
+    ).first()
+
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found or unauthorized.")
+
+    db.delete(transaction)
+    db.commit()
+    return {"status": "ok", "message": "Harcama basariyla silindi."}
+
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
