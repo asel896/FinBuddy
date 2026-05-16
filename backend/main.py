@@ -18,7 +18,8 @@ import jwt
 from datetime import datetime, timedelta, timezone
 import bcrypt  
 from fastapi.security import OAuth2PasswordBearer
-
+import httpx
+from fastapi import UploadFile, File, Form
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
@@ -543,6 +544,103 @@ async def delete_transaction(
 
 
 
+
+@app.post("/api/chat", tags=["AI Integration"])
+async def secure_chat(request: dict):
+    system_prompt = request.get("system", "")
+    messages_history = request.get("messages", [])
+    user_message = messages_history[-1].get("content", "") if messages_history else ""
+    
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
+    combined_prompt = f"{system_prompt}\n\nKullanıcı: {user_message}"
+    
+    gemini_payload = {
+        "contents": [{"parts": [{"text": combined_prompt}]}]
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(gemini_url, json=gemini_payload, timeout=30.0)
+        
+    if response.status_code != 200:
+        return {"reply": "Asistan şu an yoğun, lütfen tekrar deneyin."}
+        
+    res_data = response.json()
+    try:
+        ai_reply = res_data["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception:
+        ai_reply = "Mesaj işlenirken bir hata oluştu."
+        
+    return {"reply": ai_reply}
+
+
+
+
+@app.post("/api/transactions/upload-receipt", tags=["AI Integration"])
+async def upload_receipt(file: UploadFile = File(...)):
+    file_content = await file.read()
+    import base64
+    base64_data = base64.b64encode(file_content).decode("utf-8")
+    
+    prompt_text = """Bu bir market fişi, restoran fişi veya faturadır. Lütfen aşağıdaki JSON formatında analiz et:
+            {
+            "merchant": "İşyeri/Market adı (bulunamazsa 'Bilinmiyor')",
+            "date": "Tarih (bulunamazsa bugünün tarihi)",
+            "items": [
+                {
+                "name": "Ürün/kalem adı",
+                "price": 12.50,
+                "category": "Kategori (Market/Yemek/İçecek/Temizlik/Kişisel Bakım/Elektronik/Giyim/Fatura/Ulaşım/Eğlence/Sağlık/Diğer)"
+                }
+            ],
+            "total": 125.50
+            }
+            Önemli kurallar:
+            - Sadece geçerli bir JSON döndür, markdown (```json) kullanma.
+            - Fiyatlar sayı olsun (string değil).
+            - Kategoriyi içeriğe göre mantıklı seç."""
+
+
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
+    gemini_payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"inline_data": {"mime_type": file.content_type, "data": base64_data}},
+                    {"text": prompt_text}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.1,
+            "responseMimeType": "application/json"
+        }
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(gemini_url, json=gemini_payload, timeout=60.0)
+        
+    if response.status_code != 200:
+        return {"error": "Gemini API hatası", "details": response.text}
+        
+    res_data = response.json()
+    try:
+        raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+        parsed_json = json.loads(raw_text)
+        return parsed_json
+    except Exception as e:
+        return {"error": "JSON Ayrıştırma Hatası", "details": str(e)}
+
+
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+
+
+
+
+
