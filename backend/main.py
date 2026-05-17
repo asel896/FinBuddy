@@ -43,6 +43,14 @@ app = FastAPI(
 )
 
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"], 
+    allow_headers=["*"], 
+)
+
 
 try:
     with engine.connect() as conn:
@@ -607,6 +615,12 @@ async def secure_chat(request: dict):
     messages_history = request.get("messages", [])
     user_message = messages_history[-1].get("content", "") if messages_history else ""
     
+    system_prompt = (
+        "Sen FinBuddy uygulamasının akıllı, esprili, hafif fırlama ve bütçe dostu finansal asistanısın. "
+        "Kullanıcılara sıkıcı finans tavsiyeleri vermek yerine, evde kahve yapmalarını, gereksiz harcamaları kısmalarını "
+        "söyleyen, onları gaza getiren samimi bir dille konuşmalısın. Asla resmi veya robotik bir dil kullanma!"
+    )
+
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
     combined_prompt = f"{system_prompt}\n\nKullanıcı: {user_message}"
