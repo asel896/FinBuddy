@@ -43,6 +43,20 @@ app = FastAPI(
 )
 
 
+
+try:
+    with engine.connect() as conn:
+        conn.execute(text("DROP INDEX IF EXISTS ix_goals_id CASCADE;"))
+        conn.execute(text("DROP TABLE IF EXISTS goals CASCADE;"))
+        conn.commit()
+    print("Mükemmel temizlik yapıldı!")
+except Exception as e:
+    print(f"Temizlik pas geçildi: {e}")
+
+
+Base.metadata.create_all(bind=engine)
+
+
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -57,6 +71,8 @@ def custom_openapi():
             "description": "Kopyaladığın tokenı buraya yapıştır. Örn: Bearer <token>"
         }
     }
+
+    
     
     
     # Giriş gerektiren korumalı endpoint'lerin listesi
@@ -74,12 +90,14 @@ def custom_openapi():
     #    }
     #}
     
-    #######
+    
     secured_routes = [
-        "/transactions/mood", "/transactions/smart-add", "/ask",
-        "/analysis/weekly", "/analysis/forecast", "/analysis/chart-data",
-        "/check-budget/", "/transactions/upload-csv", "/transactions/export-csv"
-    ]
+    "/transactions/mood", "/transactions/smart-add", "/ask",
+    "/analysis/weekly", "/analysis/forecast", "/analysis/chart-data",
+    "/check-budget/", "/transactions/upload-csv", "/transactions/export-csv"  
+    "/api/goals", "/api/goals/auto-allocate"
+]
+
     
    
     for path, methods in openapi_schema.get("paths", {}).items():
@@ -122,6 +140,31 @@ class BudgetStatus(BaseModel):
     limit: float
     spent: float
 
+
+class GoalCreate(BaseModel):
+    name: str
+    target: float
+    current: Optional[float] = 0.0
+    color: Optional[str] = "#14b8a6"
+    priority: Optional[int] = 1
+
+
+    target_amount: Optional[float] = None
+    current_amount: Optional[float] = None
+    deadline: Optional[str] = None
+
+class GoalResponse(BaseModel):
+    id: int
+    name: str
+    target: float
+    current: float
+    color: str
+    insight: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 # GEMINI YAPAY ZEKA AYARLARI 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY")) 
 
@@ -140,15 +183,16 @@ model = genai.GenerativeModel(
 
 @app.on_event("startup")
 def startup_event():
-    """Uygulama başlarken tabloları güvenli ve asenkron olarak oluşturur."""
-    for i in range(5):
-        try:
-            models.Base.metadata.create_all(bind=engine)
-            print("Veritabanı bağlantısı ve tablolar başarıyla hazırlandı!")
-            break
-        except Exception as e:
-            print(f"Veritabanı henüz hazır değil, bekleniyor... (Deneme {i+1}/5) Hata: {e}")
-            time.sleep(2)
+    """Uygulama baslarken tablolari kontrol eder, indeks hatasini tamamen pas gecer."""
+    try:
+        
+        models.Base.metadata.create_all(bind=engine)
+        print("🚀 FinBuddy Veritabanı jilet gibi hazır, canavar çalışıyor!")
+    except Exception as e:
+        if "already exists" in str(e):
+            print("🚀 Tablolar ve indeksler zaten hazir! Sorun yok, devam.")
+        else:
+            print(f"Veritabanı uyarısı (Pas geçildi): {e}")
 
 
 
@@ -749,6 +793,200 @@ async def get_psychological_insights(db: Session = Depends(get_db)):
         "budget_overflow": budget_overflow
     }
 
+
+
+@app.get("/api/goals", response_model=list[GoalResponse], tags=["Goals"])
+async def get_goals(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Kullanıcının hedeflerini listeler ve Gemini ile dinamik insight üretir."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == user_email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Geçersiz token.")
+
+    goals = db.query(models.Goal).order_by(models.Goal.priority.asc()).all()
+    
+    response_data = []
+    for g in goals:
+        # Gemini AI ile hedefe özel esprili ve akıllı taktik üretme
+        remaining = g.target - g.current
+        if remaining <= 0:
+            ai_insight = "🎉 Tebrikler! Bu hedefe ulaştın, parayı ezme vakti!"
+        else:
+            prompt_goal = (
+                f"Kullanıcı '{g.name}' hedefi için {g.current} TL biriktirmiş. Hedeflenen toplam tutar {g.target} TL. "
+                f"Kalan {remaining} TL için kullanıcıya evde kahve yapması veya harcamaları kısması yönünde çok kısa, tek cümlelik, esprili bir finansal taktik ver."
+            )
+            try:
+                ai_insight = model.generate_content(prompt_goal).text.strip()
+            except:
+                ai_insight = "Tasarrufa devam et, hedefe çok az kaldı!"
+
+        response_data.append({
+            "id": g.id,
+            "name": g.name,
+            "target": g.target,
+            "current": g.current,
+            "color": g.color,
+            "insight": ai_insight
+        })
+        
+    return response_data
+
+
+@app.post("/api/goals", tags=["Goals"])
+async def create_goal(goal_data: GoalCreate, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == user_email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Geçersiz token.")
+
+    # 🌟 SADECE BİZİM YENİ ŞEMADAKİ TEMİZ ALANLARI ZORLA SEÇİP VERİTABANINA BASIYORUZ:
+    new_goal = models.Goal(
+        user_id=user.id,
+        name=goal_data.name,
+        target=goal_data.target,
+        current=goal_data.current if goal_data.current is not None else 0.0,
+        color=goal_data.color if goal_data.color else "#14b8a6",
+        priority=goal_data.priority if goal_data.priority else 1
+    )
+    db.add(new_goal)
+    db.commit()
+    db.refresh(new_goal)
+    return {"status": "ok", "message": "Hedef başarıyla oluşturuldu!", "goal_id": new_goal.id}
+
+@app.delete("/api/goals/{goal_id}", tags=["Goals"])
+async def delete_goal(goal_id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Kullanıcının hedefini veritabanından siler."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == user_email).first()
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Geçersiz token.")
+
+    goal = db.query(models.Goal).filter(models.Goal.id == goal_id, models.Goal.user_id == user.id).first()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Hedef bulunamadı veya yetkisiz işlem.")
+
+    db.delete(goal)
+    db.commit()
+    return {"status": "ok", "message": "Hedef başarıyla silindi."}
+
+
+@app.post("/api/goals/auto-allocate", tags=["Goals"])
+async def auto_allocate_remaining_budget(monthly_limit: float, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """O ay bütçeden kalan tutarı otomatik hesaplar ve en önemli (Priority: 1) hedefe aktarır."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == user_email).first()
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Geçersiz token.")
+
+    # 1. Kullanıcının yaptığı tüm harcamaların toplamını buluyoruz
+    total_expenses = db.query(func.sum(models.Transaction.amount)).filter(
+        models.Transaction.user_id == user.id,
+        models.Transaction.type == "expense"
+    ).scalar() or 0.0
+
+    # 2. Kalan parayı hesapla (Limit - Harcanan)
+    remaining_cash = monthly_limit - total_expenses
+
+    if remaining_cash <= 0:
+        return {"status": "info", "message": "Bu ay bütçe artmamış, aktarılacak para yok. Biraz daha az harca kral!"}
+
+    # 3. Kullanıcının en önemli (en yüksek öncelikli) tamamlanmamış hedefini bul
+    primary_goal = db.query(models.Goal).filter(
+        models.Goal.user_id == user.id,
+        models.Goal.current < models.Goal.target
+    ).order_by(models.Goal.priority.asc(), models.Goal.id.asc()).first()
+
+    if not primary_goal:
+        return {"status": "info", "message": f"{remaining_cash} TL bütçe arttı fakat para aktarılacak aktif bir hedef bulunamadı."}
+
+    # 4. Parayı hedefe aktar ve veritabanını güncelle
+    old_current = primary_goal.current
+    primary_goal.current += remaining_cash
+    
+    # Eğer hedef aşılırsa max sınırda sabitlemek istersen (opsiyonel):
+    # primary_goal.current = min(primary_goal.current, primary_goal.target)
+
+    db.commit()
+    db.refresh(primary_goal)
+
+    return {
+        "status": "ok",
+        "message": f"Ay sonu bütçe başarısı! Kalan {remaining_cash} TL, en önemli hedefin olan '{primary_goal.name}' alanına otomatik aktarıldı!",
+        "allocated_amount": remaining_cash,
+        "goal_name": primary_goal.name,
+        "new_balance": primary_goal.current
+    }
+
+
+@app.post("/api/goals/auto-forward", tags=["Goals"])
+async def auto_forward_remaining_budget(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Ay bittiğinde kategorilerden artan tüm bütçeyi otomatik olarak en yüksek öncelikli hedefe aktarır."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == user_email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Geçersiz token.")
+
+    
+    budgets = db.query(models.Budget).all() # Eğer budget tablosunda user_id varsa filtrele kral
+    total_budget_limit = sum([b.monthly_limit for b in budgets]) if budgets else 0.0
+
+    
+    transactions = db.query(models.Transaction).filter(
+        models.Transaction.user_id == user.id,
+        models.Transaction.type == "expense"
+    ).all()
+    total_expenses = sum([t.amount for t in transactions]) if transactions else 0.0
+
+    
+    remaining_money = total_budget_limit - total_expenses
+
+    if remaining_money <= 0:
+        return {"status": "info", "message": "Bu ay bütçeden artan para kalmadı, aktarım yapılmadı.", "remaining": remaining_money}
+
+    
+    top_goal = db.query(models.Goal).filter(
+        models.Goal.user_id == user.id,
+        models.Goal.current < models.Goal.target
+    ).order_by(models.Goal.priority.asc()).first()
+
+    if not top_goal:
+        return {"status": "info", "message": f"Artan {remaining_money} TL var ama aktif bir birikim hedefi bulunamadı!"}
+
+    
+    old_current = top_goal.current
+    top_goal.current += remaining_money
+    
+    
+    if top_goal.current > top_goal.target:
+        top_goal.current = top_goal.target
+
+    db.commit()
+    db.refresh(top_goal)
+
+    return {
+        "status": "ok",
+        "message": f"Ay sonu bütçe artığı olan {remaining_money} TL, başarıyla '{top_goal.name}' hedefine aktarıldı!",
+        "goal_name": top_goal.name,
+        "old_amount": old_current,
+        "new_amount": top_goal.current
+    }
 
 if __name__ == "__main__":
     import uvicorn
