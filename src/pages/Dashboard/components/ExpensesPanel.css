@@ -251,3 +251,167 @@
     font-size: 13px;
   }
 }
+.expense-delete {
+  opacity: 0;
+  background: none;
+  border: none;
+  color: #f87171;
+  font-size: 16px;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.2s;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.expense-card:hover .expense-delete {
+  opacity: 1;
+}
+
+.expense-delete:hover {
+  transform: scale(1.2);
+  background: rgba(248, 113, 113, 0.1);
+}
+.total-badge {
+  background: rgba(20, 184, 166, 0.1);
+  border: 1px solid rgba(20, 184, 166, 0.2);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-family: 'Syne', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: #2dd4bf;
+}
+.expense-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #475569;
+  font-size: 13px;
+}
+/* ── Filtre toggle butonu ── */
+.filter-toggle-btn {
+  padding: 9px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: transparent;
+  color: rgba(255,255,255,0.5);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.filter-toggle-btn:hover,
+.filter-toggle-btn.active {
+  background: rgba(20,184,166,0.1);
+  border-color: rgba(20,184,166,0.3);
+  color: #2dd4bf;
+}
+
+/* ── Filtre paneli ── */
+.filter-panel {
+  background: rgba(20,184,166,0.03);
+  border: 1px solid rgba(20,184,166,0.12);
+  border-radius: 16px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: slideUp 0.2s ease both;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 64px;
+  flex-shrink: 0;
+}
+
+.filter-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-pill {
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: transparent;
+  color: rgba(255,255,255,0.45);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.filter-pill:hover {
+  border-color: rgba(20,184,166,0.3);
+  color: rgba(255,255,255,0.8);
+}
+
+.filter-pill.active {
+  background: rgba(20,184,166,0.15);
+  border-color: #14b8a6;
+  color: #2dd4bf;
+  font-weight: 600;
+}
+
+.filter-clear-btn {
+  align-self: flex-start;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(248,113,113,0.25);
+  background: rgba(248,113,113,0.08);
+  color: #f87171;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-clear-btn:hover {
+  background: rgba(248,113,113,0.15);
+  border-color: rgba(248,113,113,0.4);
+}
+
+/* ── Light tema ── */
+.theme-light .filter-toggle-btn {
+  border-color: rgba(0,0,0,0.1);
+  color: #64748b;
+}
+.theme-light .filter-toggle-btn:hover,
+.theme-light .filter-toggle-btn.active {
+  background: rgba(13,148,136,0.08);
+  border-color: rgba(13,148,136,0.25);
+  color: #0d9488;
+}
+
+.theme-light .filter-panel {
+  background: #f8fafc;
+  border-color: rgba(0,0,0,0.07);
+}
+
+.theme-light .filter-pill {
+  border-color: rgba(0,0,0,0.08);
+  color: #64748b;
+}
+.theme-light .filter-pill:hover {
+  border-color: rgba(13,148,136,0.3);
+  color: #1a202c;
+}
+.theme-light .filter-pill.active {
+  background: rgba(13,148,136,0.1);
+  border-color: #0d9488;
+  color: #0d9488;
+}

@@ -5,8 +5,8 @@
   display: flex;
   width: 100vw;
   height: 100vh;
-  background: #030b15;
   overflow: hidden;
+  transition: background 0.3s;
 }
 
 .db-main {
@@ -14,23 +14,23 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transition: background 0.3s;
 }
 
 /* ── SIDEBAR ── */
 .sidebar {
   width: 240px;
   min-width: 240px;
-  background: rgba(6, 18, 38, 0.95);
-  border-right: 1px solid rgba(20, 184, 166, 0.12);
   display: flex;
   flex-direction: column;
-  padding: 16px 16px;
+  padding: 16px;
   gap: 6px;
   height: 100vh;
   overflow: hidden;
+  transition: background 0.3s, border-color 0.3s;
 }
 
-/* ── Logo alanı — sabit yükseklik, küçük ── */
+/* ── Logo alanı ── */
 .sidebar-brand {
   display: flex;
   align-items: center;
@@ -40,23 +40,37 @@
   flex-shrink: 0;
 }
 
-.brand-logo-mini {
-  width: 32px;
-  height: 32px;
-  object-fit: contain;
-  border-radius: 8px;
-  flex-shrink: 0;
-}
-
 .sidebar-title {
   font-size: 17px;
   font-weight: 700;
-  color: #64ffda;
   letter-spacing: 0.5px;
   white-space: nowrap;
+  transition: color 0.3s;
 }
 
-/* ── Nav — kalan alanı doldur, scroll ── */
+/* ── Tema toggle butonu ── */
+.theme-toggle {
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 15px;
+  transition: background 0.2s, transform 0.3s;
+  flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: rotate(20deg);
+}
+
+/* ── Nav ── */
 .sidebar-nav {
   display: flex;
   flex-direction: column;
@@ -64,7 +78,7 @@
   flex: 1;
   overflow-y: auto;
   padding-right: 4px;
-  min-height: 0; /* flex child'ın shrink olabilmesi için zorunlu */
+  min-height: 0;
 }
 
 .sidebar-nav::-webkit-scrollbar { width: 4px; }
@@ -81,7 +95,6 @@
   border-radius: 12px;
   border: none;
   background: transparent;
-  color: rgba(255,255,255,0.5);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
@@ -90,73 +103,18 @@
   flex-shrink: 0;
 }
 
-.nav-item:hover  { background: rgba(20,184,166,0.08); color: rgba(255,255,255,0.8); }
-.nav-item.active { background: rgba(20,184,166,0.15); color: #64ffda; font-weight: 600; }
-
-/* ── Profil kartı — flex-shrink:0 ile ezilmesin ── */
-.profile-card-wrap {
-  flex-shrink: 0;
-}
-
-/* ── Bütçe alanı ── */
-.sidebar-budget {
-  padding: 14px;
-  background: rgba(6, 122, 108, 0.05);
-  border-radius: 14px;
-  border: 1px solid rgba(20, 184, 166, 0.12);
-  flex-shrink: 0;
-}
-
-.budget-label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
-  margin-bottom: 8px;
-}
-
-.budget-amount { color: #64ffda; font-weight: 600; }
-
-.budget-bar {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.budget-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.6s ease;
-}
-
-.budget-sub {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.3);
-  margin-top: 6px;
-}
-
-/* ── Export alanı ── */
-.sidebar-export {
-  flex-shrink: 0;
-}
-
 /* ── Logout ── */
 .logout-btn {
   padding: 9px;
-  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 10px;
   background: transparent;
-  color: rgba(255,255,255,0.3);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
 }
 
-.logout-btn:hover { border-color: #ef4444; color: #ef4444; }
-
-/* ── SHARED: Lottie wrapper ── */
+/* ── Lottie wrapper ── */
 .lottie-icon-wrap {
   display: inline-flex;
   align-items: center;
@@ -164,7 +122,7 @@
   transition: transform 0.2s;
 }
 
-/* ── SHARED: Tab panel base ── */
+/* ── Tab panel base ── */
 .tab-panel {
   padding: 28px;
   height: 100%;
@@ -180,10 +138,10 @@
   margin-bottom: 24px;
 }
 
-.tab-header h2 { font-size: 20px; color: #e2f0f9; }
-.tab-header p  { font-size: 13px; color: rgba(255,255,255,0.4); margin-top: 2px; }
+.tab-header h2 { font-size: 20px; }
+.tab-header p  { font-size: 13px; margin-top: 2px; }
 
-/* ── SHARED: Add / action button ── */
+/* ── Add button ── */
 .add-btn {
   padding: 10px 18px;
   background: #14b8a6;
@@ -199,17 +157,129 @@
 
 .add-btn:hover { background: #0d9488; }
 
-/* ── SHARED: Generic input ── */
+/* ── Input ── */
 .db-inp {
   padding: 11px 14px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.1);
   border-radius: 10px;
-  color: #fff;
   font-size: 14px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, background 0.2s;
 }
 
 .db-inp:focus { border-color: #14b8a6; }
-.db-inp::placeholder { color: rgba(255,255,255,0.28); }
+
+/* ═══════════════════════════════════════
+   DARK TEMA
+═══════════════════════════════════════ */
+.theme-dark {
+  background: #030b15;
+}
+
+.theme-dark .db-main {
+  background: #030b15;
+}
+
+.theme-dark .sidebar {
+  background: rgba(6, 18, 38, 0.95);
+  border-right: 1px solid rgba(20, 184, 166, 0.12);
+}
+
+.theme-dark .sidebar-title { color: #64ffda; }
+
+.theme-dark .sidebar-brand {
+  border-bottom-color: rgba(255,255,255,0.06);
+}
+
+.theme-dark .nav-item       { color: rgba(255,255,255,0.5); }
+.theme-dark .nav-item:hover { background: rgba(20,184,166,0.08); color: rgba(255,255,255,0.8); }
+.theme-dark .nav-item.active{ background: rgba(20,184,166,0.15); color: #64ffda; font-weight: 600; }
+
+.theme-dark .logout-btn {
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.3);
+}
+.theme-dark .logout-btn:hover { border-color: #ef4444; color: #ef4444; }
+
+.theme-dark .db-inp {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #fff;
+}
+.theme-dark .db-inp::placeholder { color: rgba(255,255,255,0.28); }
+
+.theme-dark .tab-header h2 { color: #e2f0f9; }
+.theme-dark .tab-header p  { color: rgba(255,255,255,0.4); }
+
+/* ═══════════════════════════════════════
+   LIGHT TEMA
+═══════════════════════════════════════ */
+.theme-light {
+  background: #f0f4f8;
+}
+
+.theme-light .db-main {
+  background: #f0f4f8;
+}
+
+.theme-light .sidebar {
+  background: #ffffff;
+  border-right: 1px solid rgba(0,0,0,0.08);
+}
+
+.theme-light .sidebar-title { color: #0d9488; }
+
+.theme-light .sidebar-brand {
+  border-bottom-color: rgba(0,0,0,0.08);
+}
+
+.theme-light .theme-toggle {
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.1);
+}
+
+.theme-light .nav-item       { color: #64748b; }
+.theme-light .nav-item:hover { background: rgba(13,148,136,0.08); color: #1a202c; }
+.theme-light .nav-item.active{ background: rgba(13,148,136,0.12); color: #0d9488; font-weight: 600; }
+
+.theme-light .logout-btn {
+  border: 1px solid rgba(0,0,0,0.08);
+  color: #94a3b8;
+}
+.theme-light .logout-btn:hover { border-color: #ef4444; color: #ef4444; }
+
+.theme-light .db-inp {
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.1);
+  color: #1a202c;
+}
+.theme-light .db-inp::placeholder { color: #94a3b8; }
+
+.theme-light .tab-header h2 { color: #1a202c; }
+.theme-light .tab-header p  { color: #64748b; }
+
+.theme-light .profile-card {
+  background: #f8fafc;
+  border-color: rgba(0,0,0,0.08);
+}
+.theme-light .pc-name    { color: #1a202c; }
+.theme-light .pc-email   { color: #94a3b8; }
+.theme-light .pc-label   { color: #94a3b8; }
+.theme-light .pc-value   { color: #1a202c; }
+.theme-light .pc-divider { background: rgba(0,0,0,0.08); }
+.theme-light .pc-bar-bg  { background: rgba(0,0,0,0.08); }
+.theme-light .pc-bar-label { color: #94a3b8; }
+
+.theme-light .expense-card {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.07);
+}
+.theme-light .expense-desc   { color: #1a202c; }
+.theme-light .expense-meta   { color: #94a3b8; }
+
+.theme-light .sidebar-export {
+  background: #f1f5f9 !important;
+  border-color: rgba(0,0,0,0.08) !important;
+}
+.theme-light .sidebar-export-title { color: #1a202c !important; }
+.theme-light .sidebar-export-sub   { color: #94a3b8 !important; }
+.theme-light .sidebar-export-icon  { background: rgba(0,0,0,0.04) !important; }

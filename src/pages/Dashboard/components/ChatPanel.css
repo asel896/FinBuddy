@@ -153,3 +153,37 @@
 
 .chat-send:hover    { background: #0d9488; transform: translateY(-1px); }
 .chat-send:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+/* ═══════════════════════════════════════
+   LIGHT TEMA — CHAT
+═══════════════════════════════════════ */
+.theme-light .chat-header {
+  border-bottom-color: rgba(0,0,0,0.08);
+}
+
+.theme-light .chat-header h2 { color: #1a202c; }
+.theme-light .chat-header p  { color: #64748b; }
+
+.theme-light .insight-pill {
+  background: rgba(13,148,136,0.08);
+  border-color: rgba(13,148,136,0.2);
+  color: #0d9488;
+}
+
+.theme-light .msg.assistant .msg-bubble {
+  background: #f1f5f9;
+  border-color: rgba(0,0,0,0.07);
+  color: #1a202c;
+}
+
+.theme-light .chat-input-row {
+  border-top-color: rgba(0,0,0,0.08);
+}
+
+.theme-light .chat-inp {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.1);
+  color: #1a202c;
+}
+
+.theme-light .chat-inp::placeholder { color: #94a3b8; }
+.theme-light .chat-inp:focus { border-color: #0d9488; }

@@ -19,7 +19,7 @@
 .goal-pct  { margin-left: auto; font-size: 22px; font-weight: 700; color: #64ffda; }
 
 .goal-bar {
-  height: 8px;
+  height: 10px;
   background: rgba(255,255,255,0.08);
   border-radius: 4px;
   overflow: hidden;
@@ -28,7 +28,7 @@
 
 .goal-fill {
   height: 100%;
-  background: #14b8a6;
+  background: #0a7065;
   border-radius: 4px;
   transition: width 0.8s ease;
 }
@@ -69,7 +69,7 @@
 }
 
 .goal-input:focus {
-  border-color: #14b8a6;
+  border-color: #000000;
 }
 
 .goal-input::placeholder {
@@ -196,3 +196,103 @@
 .goal-add-btn:hover:not(:disabled) { background: rgba(20, 184, 166, 0.18); }
 .goal-add-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .goal-add-btn.success { background: rgba(20, 184, 166, 0.25); border-color: #14b8a6; }
+
+/* ═══════════════════════════════════════
+   LIGHT TEMA — GOALS
+═══════════════════════════════════════ */
+.theme-light .goal-card {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.07);
+}
+
+.theme-light .goal-name { color: #1a202c; }
+.theme-light .goal-sub  { color: #64748b; }
+.theme-light .goal-pct  { color: #0d9488; }
+
+.theme-light .goal-bar  { background: rgba(0,0,0,0.08); }
+
+.theme-light .goal-insight {
+  background: rgba(13,148,136,0.06);
+  color: #475569;
+}
+.theme-light .goal-insight strong { color: #0d9488; }
+
+.theme-light .goal-input {
+  background: #f8fafc;
+  border-color: rgba(0,0,0,0.1);
+  color: #1a202c;
+}
+.theme-light .goal-input::placeholder { color: #94a3b8; }
+.theme-light .goal-input:focus { border-color: #0d9488; }
+
+.theme-light .goal-add-btn {
+  background: rgba(13,148,136,0.08);
+  border-color: rgba(13,148,136,0.25);
+  color: #0d9488;
+}
+.theme-light .goal-add-btn:hover:not(:disabled) {
+  background: rgba(13,148,136,0.15);
+}
+
+.theme-light .goal-color-dot.active { border-color: #1a202c; }
+
+/* ── Dalga efekti ── */
+.goal-bar {
+  position: relative;
+}
+
+.goal-fill--complete {
+  position: relative;
+  overflow: hidden;
+}
+
+.goal-fill--complete::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 75%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.6) 50%,
+    transparent 100%
+  );
+  animation: wave 1.2s ease-in-out infinite;
+}
+
+@keyframes wave {
+  0%   { left: -100%; }
+  100% { left: 100%;  }
+}
+
+/* Tamamlanan kart */
+.goal-card--complete {
+  border-color: rgba(20, 184, 166, 0.35);
+  background: rgba(20, 184, 166, 0.04);
+}
+
+.goal-card--complete .goal-pct {
+  color: #4ade80;
+}
+
+.goal-complete-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 14px;
+  background: rgba(74, 222, 128, 0.1);
+  border: 1px solid rgba(74, 222, 128, 0.25);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #4ade80;
+  animation: badgePop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+@keyframes badgePop {
+  from { opacity: 0; transform: scale(0.7); }
+  to   { opacity: 1; transform: scale(1);   }
+}

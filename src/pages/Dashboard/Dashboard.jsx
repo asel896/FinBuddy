@@ -3,29 +3,25 @@ import { useNavigate } from "react-router-dom";
 import "./Dashboard.css";
 import "./components/Profilecard.css";
 import "./components/Exportfab.css";
+import Onboarding from "./components/Onboarding";
 
-// Shared
 import LottieIcon from "./components/LottieIcon";
-
-// Tab panels
 import ChatPanel     from "./components/ChatPanel";
 import ExpensesPanel from "./components/ExpensesPanel";
 import GoalsPanel    from "./components/GoalsPanel";
 import InsightsPanel from "./components/InsightsPanel";
 import ReceiptPanel  from "./components/ReceiptPanel";
-
-// Bileşenler
 import ProfileCard                   from "./components/ProfileCard";
 import { ToastContainer, useToast } from "./components/Toast";
 
-// Animations
-import animOctopus from "./animations/octopus1.json";
 import animChat    from "./animations/chat.json";
 import animMoney   from "./animations/money.json";
 import animTarget  from "./animations/target.json";
 import animStats   from "./animations/stats.json";
 import animScan    from "./animations/scan.json";
 import animExport  from "./animations/export.json";
+import animDark    from "./animations/dark.json";
+import animLight   from "./animations/light.json";
 
 const NAV_TABS = [
   { id: "chat",     animationData: animChat,   label: "Asistan"      },
@@ -50,7 +46,6 @@ const MOCK_GOALS = [
 
 const BUDGET = 3000;
 
-// ── Sidebar Export bileşeni ──────────────────────────────────────
 const SidebarExport = ({ expenses, goals }) => {
   const [done, setDone] = useState(null);
 
@@ -124,17 +119,28 @@ const SidebarExport = ({ expenses, goals }) => {
     </div>
   );
 };
-// ────────────────────────────────────────────────────────────────
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("chat");
-  const [expenses, setExpenses]   = useState(MOCK_EXPENSES);
-  const [goals, setGoals]         = useState(MOCK_GOALS);
+  const [activeTab, setActiveTab]     = useState("chat");
+  const [expenses, setExpenses]       = useState(MOCK_EXPENSES);
+  const [goals, setGoals]             = useState(MOCK_GOALS);
+  const [isDark, setIsDark]           = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(
+    !localStorage.getItem("buddyocto_onboarding")
+  );
+  const [userData, setUserData] = useState(
+    JSON.parse(localStorage.getItem("buddyocto_onboarding") || "null")
+  );
 
   const { toasts, removeToast, success, error, warning } = useToast();
 
   const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
+
+  const handleOnboardingFinish = (values) => {
+    setUserData(values);
+    setShowOnboarding(false);
+  };
 
   const handleSetExpenses = (updater) => {
     setExpenses((prev) => {
@@ -159,20 +165,33 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="db-root">
-      {/* ── SIDEBAR ── */}
-      <aside className="sidebar">
+    <div className={`db-root ${isDark ? "theme-dark" : "theme-light"}`}>
 
-        {/* Sadece yazı — logo artık ProfileCard'da */}
+      {showOnboarding && (
+        <Onboarding onFinish={handleOnboardingFinish} />
+      )}
+
+      <aside className="sidebar">
         <div className="sidebar-brand">
           <span className="sidebar-title">FinBuddy</span>
+          <button
+            className="theme-toggle"
+            onClick={() => setIsDark(!isDark)}
+            title={isDark ? "Açık tema" : "Koyu tema"}
+          >
+            <LottieIcon
+              animationData={isDark ? animLight : animDark}
+              size={22}
+              autoplay
+            />
+          </button>
         </div>
 
         <ProfileCard
-          name="Kullanıcı"
+          name={userData?.name || "Kullanıcı"}
           email="kullanici@email.com"
           monthlyTotal={totalSpent}
-          monthlyBudget={BUDGET}
+          monthlyBudget={userData?.budget ? parseInt(userData.budget) : BUDGET}
         />
 
         <nav className="sidebar-nav">
@@ -200,7 +219,6 @@ const Dashboard = () => {
         </button>
       </aside>
 
-      {/* ── MAIN ── */}
       <main className="db-main">
         {activeTab === "chat" && (
           <ChatPanel expenses={expenses} setExpenses={handleSetExpenses} />
@@ -211,13 +229,13 @@ const Dashboard = () => {
         {activeTab === "goals" && (
           <GoalsPanel
             expenses={expenses}
-            budget={BUDGET}
+            budget={userData?.budget ? parseInt(userData.budget) : BUDGET}
             goals={goals}
             setGoals={setGoals}
           />
         )}
         {activeTab === "insights" && (
-          <InsightsPanel expenses={expenses} />
+          <InsightsPanel expenses={expenses} isDark={isDark} />
         )}
         {activeTab === "receipt" && (
           <ReceiptPanel setExpenses={handleSetExpenses} />

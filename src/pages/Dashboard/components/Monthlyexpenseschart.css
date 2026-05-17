@@ -156,3 +156,43 @@
   font-weight: 600;
   color: #f1f5f9;
 }
+/* ═══════════════════════════════════════
+   LIGHT TEMA — MONTHLY EXPENSES CHART
+═══════════════════════════════════════ */
+.theme-light .mec-card {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.07);
+}
+
+.theme-light .mec-title    { color: #1a202c; }
+.theme-light .mec-subtitle { color: #64748b; }
+
+.theme-light .mec-filter-btn {
+  border-color: rgba(0,0,0,0.1);
+  color: #64748b;
+}
+.theme-light .mec-filter-btn:hover {
+  border-color: rgba(0,0,0,0.2);
+  color: #1a202c;
+}
+.theme-light .mec-filter-btn--active {
+  background: rgba(99,102,241,0.1);
+  border-color: #6366f1;
+  color: #6366f1;
+}
+
+.theme-light .mec-stats {
+  background: #f8fafc;
+  border-color: rgba(0,0,0,0.07);
+}
+.theme-light .mec-stat__label   { color: #94a3b8; }
+.theme-light .mec-stat-divider  { background: rgba(0,0,0,0.08); }
+
+.theme-light .mec-tooltip {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.1);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+}
+.theme-light .mec-tooltip__label { color: #1a202c; border-bottom-color: rgba(0,0,0,0.07); }
+.theme-light .mec-tooltip__name  { color: #64748b; }
+.theme-light .mec-tooltip__value { color: #1a202c; }

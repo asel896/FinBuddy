@@ -1,15 +1,9 @@
 import React, { useState, useMemo } from "react";
 import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  ResponsiveContainer,
-  Sector,
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Sector,
 } from "recharts";
 import "./CategoryPieChart.css";
 
-// ── Kategori renkleri (mevcut projeyle uyumlu) ──
 const CATEGORY_COLORS = {
   "Market":        "#14b8a6",
   "Yemek":         "#f59e0b",
@@ -34,21 +28,16 @@ const FALLBACK_DATA = [
   { category: "Diğer",    total: 650,  percentage: 11.4 },
 ];
 
-// ── Harcamalardan kategori verisi üret ──
 function buildCategoryData(expenses) {
   if (!expenses || expenses.length === 0) return null;
-
   const totals = {};
   let grand = 0;
-
   expenses.forEach((e) => {
     const cat = e.category || "Diğer";
     totals[cat] = (totals[cat] || 0) + (e.amount || 0);
     grand += e.amount || 0;
   });
-
   if (grand === 0) return null;
-
   return Object.entries(totals)
     .map(([category, total]) => ({
       category,
@@ -58,11 +47,8 @@ function buildCategoryData(expenses) {
     .sort((a, b) => b.total - a.total);
 }
 
-// ── Aktif dilim render'ı ──
 const renderActiveShape = (props) => {
-  const {
-    cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill,
-  } = props;
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
   return (
     <g>
       <Sector
@@ -78,17 +64,14 @@ const renderActiveShape = (props) => {
   );
 };
 
-// ── Tooltip ──
-const CustomTooltip = ({ active, payload }) => {
+const CustomTooltip = ({ active, payload, isDark }) => {
   if (active && payload && payload.length) {
     const d = payload[0].payload;
     return (
-      <div className="cpc-tooltip">
+      <div className={`cpc-tooltip ${isDark ? "" : "cpc-tooltip--light"}`}>
         <div className="cpc-tooltip__cat">{d.category}</div>
         <div className="cpc-tooltip__row">
-          <span className="cpc-tooltip__val">
-            ₺{d.total.toLocaleString("tr-TR")}
-          </span>
+          <span className="cpc-tooltip__val">₺{d.total.toLocaleString("tr-TR")}</span>
           <span className="cpc-tooltip__pct">%{d.percentage}</span>
         </div>
       </div>
@@ -97,54 +80,39 @@ const CustomTooltip = ({ active, payload }) => {
   return null;
 };
 
-// ────────────────────────────────────────────────
-const CategoryPieChart = ({ expenses }) => {
+const CategoryPieChart = ({ expenses, isDark = true }) => {
   const [activeIndex, setActiveIndex] = useState(null);
 
   const realData = useMemo(() => buildCategoryData(expenses), [expenses]);
   const isRealData = realData !== null;
   const data = realData || FALLBACK_DATA;
-
   const total = data.reduce((s, d) => s + d.total, 0);
-
-  // Aktif kategori (hover veya ilk eleman)
   const active = activeIndex !== null ? data[activeIndex] : null;
 
   return (
-    <div className="cpc-card">
-      {/* ── Başlık ── */}
+    <div className={`cpc-card ${isDark ? "" : "cpc-card--light"}`}>
       <div className="cpc-header">
         <div>
           <h2 className="cpc-title">Kategori Dağılımı</h2>
           <p className="cpc-subtitle">
-            {isRealData
-              ? "Harcamalarına göre dağılım"
-              : "Örnek veri — harcama ekledikçe güncellenir"}
+            {isRealData ? "Harcamalarına göre dağılım" : "Örnek veri — harcama ekledikçe güncellenir"}
           </p>
         </div>
         <div className="cpc-total-badge">
           <span className="cpc-total-label">Toplam</span>
-          <span className="cpc-total-value">
-            ₺{total.toLocaleString("tr-TR")}
-          </span>
+          <span className="cpc-total-value">₺{total.toLocaleString("tr-TR")}</span>
         </div>
       </div>
 
-      {/* ── İçerik: Pasta + Liste ── */}
       <div className="cpc-body">
-
-        {/* Pasta grafik */}
         <div className="cpc-chart-wrap">
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie
                 data={data}
-                cx="50%"
-                cy="50%"
-                innerRadius={62}
-                outerRadius={90}
-                dataKey="total"
-                nameKey="category"
+                cx="50%" cy="50%"
+                innerRadius={62} outerRadius={90}
+                dataKey="total" nameKey="category"
                 paddingAngle={3}
                 activeIndex={activeIndex}
                 activeShape={renderActiveShape}
@@ -157,18 +125,15 @@ const CategoryPieChart = ({ expenses }) => {
                     fill={CATEGORY_COLORS[entry.category] || CATEGORY_COLORS["Diğer"]}
                     opacity={
                       activeIndex === null ||
-                      data[activeIndex]?.category === entry.category
-                        ? 1
-                        : 0.35
+                      data[activeIndex]?.category === entry.category ? 1 : 0.35
                     }
                   />
                 ))}
               </Pie>
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip isDark={isDark} />} />
             </PieChart>
           </ResponsiveContainer>
 
-          {/* Ortadaki yazı */}
           <div className="cpc-center-label">
             {active ? (
               <>
@@ -184,7 +149,6 @@ const CategoryPieChart = ({ expenses }) => {
           </div>
         </div>
 
-        {/* Kategori listesi */}
         <div className="cpc-list">
           {data.map((entry, i) => {
             const color = CATEGORY_COLORS[entry.category] || CATEGORY_COLORS["Diğer"];
@@ -196,28 +160,17 @@ const CategoryPieChart = ({ expenses }) => {
                 onMouseEnter={() => setActiveIndex(i)}
                 onMouseLeave={() => setActiveIndex(null)}
               >
-                {/* Renk dot */}
-                <div
-                  className="cpc-dot"
-                  style={{ background: color }}
-                />
-
-                {/* Kategori adı + bar */}
+                <div className="cpc-dot" style={{ background: color }} />
                 <div className="cpc-list-info">
                   <div className="cpc-list-top">
                     <span className="cpc-list-name">{entry.category}</span>
-                    <span className="cpc-list-amount">
-                      ₺{entry.total.toLocaleString("tr-TR")}
-                    </span>
+                    <span className="cpc-list-amount">₺{entry.total.toLocaleString("tr-TR")}</span>
                     <span className="cpc-list-pct">%{entry.percentage}</span>
                   </div>
                   <div className="cpc-bar-track">
                     <div
                       className="cpc-bar-fill"
-                      style={{
-                        width: `${entry.percentage}%`,
-                        background: color,
-                      }}
+                      style={{ width: `${entry.percentage}%`, background: color }}
                     />
                   </div>
                 </div>
@@ -225,7 +178,6 @@ const CategoryPieChart = ({ expenses }) => {
             );
           })}
         </div>
-
       </div>
     </div>
   );

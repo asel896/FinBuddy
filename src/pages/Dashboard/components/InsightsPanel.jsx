@@ -52,7 +52,7 @@ function buildInsights(expenses) {
 }
 
 // ────────────────────────────────────────────────
-const InsightsPanel = ({ expenses = [] }) => {
+const InsightsPanel = ({ expenses = [], isDark = true }) => {
   const ins = useMemo(() => buildInsights(expenses), [expenses]);
 
   const stressVal = ins?.stressDiff != null
@@ -157,10 +157,10 @@ const InsightsPanel = ({ expenses = [] }) => {
       </div>
 
       {/* ── Aylık harcama & gelir grafiği ── */}
-      <MonthlyExpensesChart expenses={expenses} />
+      <MonthlyExpensesChart expenses={expenses} isDark={isDark} />
 
       {/* ── Kategori pasta grafiği ── */}
-      <CategoryPieChart expenses={expenses} />
+      <CategoryPieChart expenses={expenses} isDark={isDark} />
 
     </div>
   );

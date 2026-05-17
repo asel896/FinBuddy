@@ -246,3 +246,33 @@
     max-height: unset;
   }
 }
+/* ── Light mod overrides ── */
+.cpc-card--light {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.07);
+}
+
+.cpc-card--light .cpc-title    { color: #1a202c; }
+.cpc-card--light .cpc-subtitle { color: #64748b; }
+.cpc-card--light .cpc-total-label { color: #94a3b8; }
+.cpc-card--light .cpc-total-value { color: #1a202c; }
+.cpc-card--light .cpc-center-pct  { color: #1a202c; }
+.cpc-card--light .cpc-center-cat  { color: #94a3b8; }
+.cpc-card--light .cpc-list-name   { color: #475569; }
+.cpc-card--light .cpc-list-amount { color: #1a202c; }
+.cpc-card--light .cpc-list-pct    { color: #94a3b8; }
+.cpc-card--light .cpc-bar-track   { background: rgba(0,0,0,0.07); }
+.cpc-card--light .cpc-list-item:hover,
+.cpc-card--light .cpc-list-item--active { background: rgba(0,0,0,0.04); }
+
+.cpc-tooltip--light {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.1);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+}
+.cpc-tooltip--light .cpc-tooltip__cat {
+  color: #1a202c;
+  border-bottom-color: rgba(0,0,0,0.07);
+}
+.cpc-tooltip--light .cpc-tooltip__val { color: #1a202c; }
+.cpc-tooltip--light .cpc-tooltip__pct { color: #64748b; }

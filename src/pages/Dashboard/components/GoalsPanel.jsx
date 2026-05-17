@@ -11,7 +11,7 @@ const INITIAL_GOALS = [
   {
     id: 1,
     name: "iPhone Almak",
-    current: 10800,
+    current: 15800,
     target: 15000,
     color: "#14b8a6",
     animationData: animTarget,
@@ -159,35 +159,50 @@ const GoalsPanel = () => {
         </button>
       </div>
 
-      {/* ── Mevcut Hedef Kartları ── */}
       {goals.map((g) => {
-        const pct = Math.min(Math.round((g.current / g.target) * 100), 100);
-        return (
-          <div className="goal-card" key={g.id}>
-            <div className="goal-header">
-              <LottieIcon animationData={g.animationData} size={38} />
-              <div>
-                <div className="goal-name">{g.name}</div>
-                <div className="goal-sub">
-                  {g.current.toLocaleString("tr-TR")} / {g.target.toLocaleString("tr-TR")} TL
-                </div>
-              </div>
-              <div className="goal-pct">{pct}%</div>
-            </div>
-            <div className="goal-bar">
-              <div className="goal-fill" style={{ width: `${pct}%`, background: g.color }} />
-            </div>
-            {g.insight && (
-              <div className="goal-insight">
-                <span className="goal-octo-wrap">
-                  <LottieIcon animationData={animOctopus} size={22} />
-                </span>{" "}
-                {g.insight}
-              </div>
-            )}
+  const pct = Math.min(Math.round((g.current / g.target) * 100), 100);
+  const isComplete = pct >= 100;
+
+  return (
+    <div
+      className={`goal-card ${isComplete ? "goal-card--complete" : ""}`}
+      key={g.id}
+    >
+      <div className="goal-header">
+        <LottieIcon animationData={g.animationData} size={38} />
+        <div>
+          <div className="goal-name">{g.name}</div>
+          <div className="goal-sub">
+            {g.current.toLocaleString("tr-TR")} / {g.target.toLocaleString("tr-TR")} TL
           </div>
-        );
-      })}
+        </div>
+        <div className="goal-pct">{pct}%</div>
+      </div>
+
+      <div className="goal-bar">
+        <div
+          className={`goal-fill ${isComplete ? "goal-fill--complete" : ""}`}
+          style={{ width: `${pct}%`, background: g.color }}
+        />
+      </div>
+
+      {isComplete && (
+        <div className="goal-complete-badge">
+          🎯 Hedefe ulaştın, tebrikler!
+        </div>
+      )}
+
+      {g.insight && !isComplete && (
+        <div className="goal-insight">
+          <span className="goal-octo-wrap">
+            <LottieIcon animationData={animOctopus} size={22} />
+          </span>{" "}
+          {g.insight}
+        </div>
+      )}
+    </div>
+  );
+})}
     </div>
   );
 };
