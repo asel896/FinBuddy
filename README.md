@@ -65,6 +65,7 @@ npm install
 Uygulamayı yerel ortamda başlatın:
 
 Bash
+Bash
 npm run dev
 📝 Ekip Notu
 FinBuddy'nin gücü, backend'deki yapay zeka ile frontend'deki kullanıcı dostu tasarımın uyumundan gelir. Tasarımda "Kullanıcıyı yargılayan değil, ona yol gösteren bir arkadaş" tonunu koruyacağız.

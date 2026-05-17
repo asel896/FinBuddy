@@ -1,0 +1,1013 @@
+from fastapi import FastAPI, Body, Depends, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from database import engine, Base, SessionLocal, get_db
+import app.models.models as models
+import time
+from sqlalchemy.exc import OperationalError
+from app.agent.ai_engine import get_financial_advice 
+from sqlalchemy.orm import Session
+import io
+import pandas as pd
+from typing import Optional
+from pydantic import BaseModel, EmailStr
+import google.generativeai as genai
+import os
+import json
+from fastapi.responses import StreamingResponse
+import jwt
+from datetime import datetime, timedelta, timezone
+import bcrypt  
+from fastapi.security import OAuth2PasswordBearer
+import httpx
+from fastapi import UploadFile, File, Form
+from fastapi import Depends
+from sqlalchemy import func
+from collections import defaultdict
+from fastapi import Depends
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+
+
+
+
+
+
+
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+
+app = FastAPI(
+    title="FinBuddy API",
+    description="Yapay Zeka Destekli Kişisel Finans Asistanı",
+    version="1.0.0"
+)
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"], 
+    allow_headers=["*"], 
+)
+
+
+try:
+    with engine.connect() as conn:
+        conn.execute(text("DROP INDEX IF EXISTS ix_goals_id CASCADE;"))
+        conn.execute(text("DROP TABLE IF EXISTS goals CASCADE;"))
+        conn.commit()
+    print("Mükemmel temizlik yapıldı!")
+except Exception as e:
+    print(f"Temizlik pas geçildi: {e}")
+
+
+Base.metadata.create_all(bind=engine)
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = FastAPI.openapi(app)
+    
+    # OpenAPI şemasına güvenlik türünü ekliyoruz
+    openapi_schema["components"]["securitySchemes"] = {
+        "OAuth2PasswordBearer": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "Authorization",
+            "description": "Kopyaladığın tokenı buraya yapıştır. Örn: Bearer <token>"
+        }
+    }
+
+    
+    
+    
+    # Giriş gerektiren korumalı endpoint'lerin listesi
+    #############
+    # OpenAPI şemasına güvenlik türünü ekliyoruz
+    #openapi_schema["components"]["securitySchemes"] = {
+    #    "OAuth2PasswordBearer": {
+    #        "type": "oauth2",
+    #        "flows": {
+    #            "password": {
+    #                "tokenUrl": "auth/login",
+    #                "scopes": {}
+    #            }
+    #        }
+    #    }
+    #}
+    
+    
+    secured_routes = [
+    "/transactions/mood", "/transactions/smart-add", "/ask",
+    "/analysis/weekly", "/analysis/forecast", "/analysis/chart-data",
+    "/check-budget/", "/transactions/upload-csv", "/transactions/export-csv"  
+    "/api/goals", "/api/goals/auto-allocate"
+]
+
+    
+   
+    for path, methods in openapi_schema.get("paths", {}).items():
+        if path in secured_routes:
+            for method in methods:
+                openapi_schema["paths"][path][method]["security"] = [{"OAuth2PasswordBearer": []}]
+                
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
+
+
+SECRET_KEY = "SUPER_SECRET_KEY_BURAYI_DEGISTIR" 
+ALGORITHM = "HS256"
+
+
+def hash_password(password: str) -> str:
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except Exception:
+        return False
+
+# PYDANTIC ŞEMALARI
+class UserRegister(BaseModel):
+    username: str  # Ad Soyad
+    email: EmailStr # E-posta
+    password: str   # Şifre
+
+class UserLogin(BaseModel):
+    email: EmailStr 
+    password: str
+
+class BudgetStatus(BaseModel):
+    limit: float
+    spent: float
+
+
+class GoalCreate(BaseModel):
+    name: str
+    target: float
+    current: Optional[float] = 0.0
+    color: Optional[str] = "#14b8a6"
+    priority: Optional[int] = 1
+
+
+    target_amount: Optional[float] = None
+    current_amount: Optional[float] = None
+    deadline: Optional[str] = None
+
+class GoalResponse(BaseModel):
+    id: int
+    name: str
+    target: float
+    current: float
+    color: str
+    insight: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# GEMINI YAPAY ZEKA AYARLARI 
+genai.configure(api_key=os.getenv("GEMINI_API_KEY")) 
+
+generation_config = {
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "top_k": 40,
+    "max_output_tokens": 1024,
+}
+
+model = genai.GenerativeModel(
+    model_name="gemini-2.5-flash",
+    generation_config=generation_config,
+)
+
+
+@app.on_event("startup")
+def startup_event():
+    """Uygulama baslarken tablolari kontrol eder, indeks hatasini tamamen pas gecer."""
+    try:
+        
+        models.Base.metadata.create_all(bind=engine)
+        print("🚀 FinBuddy Veritabanı jilet gibi hazır, canavar çalışıyor!")
+    except Exception as e:
+        if "already exists" in str(e):
+            print("🚀 Tablolar ve indeksler zaten hazir! Sorun yok, devam.")
+        else:
+            print(f"Veritabanı uyarısı (Pas geçildi): {e}")
+
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# KAYIT VE GİRİŞ
+
+@app.post("/auth/register", tags=["Auth"])
+def register(user_data: UserRegister, db: Session = Depends(get_db)):
+    try:
+        db_user = db.query(models.User).filter(models.User.email == user_data.email).first()
+        if db_user:
+            raise HTTPException(status_code=400, detail="Bu e-posta adresi zaten kayıtlı.")
+
+        raw_password = str(user_data.password)
+        hashed_pw = hash_password(raw_password)
+            
+        new_user = models.User(
+            username=user_data.username,
+            email=user_data.email,
+            hashed_password=hashed_pw
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return {"status": "ok", "message": "Kayıt başarılı! Mürettebata katıldınız."}
+    
+    except Exception as e:
+        print("\n" + "="*50)
+        print(f"KAYIT SIRASINDA PATLAYAN GERÇEK HATA: {str(e)}")
+        print("="*50 + "\n")
+        raise HTTPException(status_code=500, detail=f"Sistem Hatası: {str(e)}")
+
+
+
+@app.post("/auth/login", tags=["Auth"])
+async def login(user_data: UserLogin, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == user_data.email).first()
+    if not user or not verify_password(user_data.password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="E-posta veya şifre hatalı.")
+    
+    expire = datetime.now(timezone.utc) + timedelta(hours=24)
+    token_data = {"sub": user.email, "user_id": user.id, "exp": expire}
+    token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
+    
+    return {
+        "status": "ok",
+        "access_token": token,
+        "token_type": "bearer",
+        "username": user.username
+    }
+
+
+
+@app.get("/", tags=["General"])
+async def welcome():
+    return {
+        "message": "FinBuddy: Akıllı Finans Asistanına Hoş Geldiniz!",
+        "status": "online",
+        "features": ["Expense Tracking", "AI Insights", "Savings Goals"]
+    }
+
+@app.get("/system/status", tags=["System"])
+async def system_status():
+    return {
+        "api_status": "healthy",
+        "ai_engine": "Gemini-2.5-Flash Ready",
+        "database_connection": "successful"
+    }
+
+
+
+@app.post("/transactions/mood", tags=["Finance"])
+async def create_mood_transaction(
+    amount: float, 
+    description: str, 
+    mood: str, 
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    # JWT Token çözülerek harcamayı yapan kullanıcı tespit ediliyor
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        current_user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == current_user_email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Geçersiz veya süresi dolmuş token.")
+
+    prompt_cat = f"'{description}' harcaması için sadece tek kelimelik bir kategori söyle (Örn: Gıda, Ulaşım, Eğlence)."
+    cat_response = model.generate_content(prompt_cat)
+    category = cat_response.text.strip().replace("*", "")
+
+    
+    new_item = models.Transaction(
+        amount=amount, 
+        category=category, 
+        description=description, 
+        mood=mood, 
+        type="expense",
+        user_id=user.id
+    )
+
+    prompt_mood = (
+        f"Kullanıcı '{mood}' bir ruh haliyle '{description}' için {amount} TL harcadı. "
+        "Buna çok kısa, esprili bir finansal tepki ver."
+    )
+    ai_comment = model.generate_content(prompt_mood).text
+
+    db.add(new_item)
+    db.commit()
+    db.refresh(new_item)
+    
+    return {
+        "message": "Duygusal harcaman kaydedildi!",
+        "ai_mood_comment": ai_comment,
+        "data": new_item
+    }
+
+@app.post("/transactions/smart-add", tags=["AI"])
+async def smart_add_transaction(
+    text: str = Body(..., embed=True), 
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    try:
+        # Kullanıcı Doğrulama
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            current_user_email = payload.get("sub")
+            user = db.query(models.User).filter(models.User.email == current_user_email).first()
+            if not user:
+                raise HTTPException(status_code=401, detail="User not found.")
+        except jwt.PyJWTError:
+            raise HTTPException(status_code=401, detail="Invalid token.")
+
+        # Prompt Hazırlama
+        prompt = (
+            f"Extract financial data from this text: '{text}'\n"
+            f"Return ONLY a valid JSON object matching this schema: "
+            f"{{\"amount\": float, \"description\": str, \"category\": str, \"mood\": str}}\n"
+            f"RULES:\n"
+            f"1. Category MUST be a single word (e.g., Gida, Ulasim, Eglence, Genel).\n"
+            f"2. Do not include any markdown formatting like ```json.\n"
+            f"3. Do not add any extra explanations."
+        )
+        
+        response = model.generate_content(prompt)
+        res_text = response.text.strip()
+        
+        if "```" in res_text:
+            res_text = res_text.split("```")[1]
+            if res_text.startswith("json"):
+                res_text = res_text[4:]
+        
+        data = json.loads(res_text.strip())
+
+        # Veritabanına Kaydetme
+        new_item = models.Transaction(
+            amount=data.get("amount", 0),
+            description=data.get("description", "Bilinmeyen"),
+            category=data.get("category", "Genel"),
+            mood=data.get("mood", "Notr"),
+            type="expense",
+            user_id=user.id
+        )
+        db.add(new_item)
+        db.commit()
+        db.refresh(new_item)
+        
+        return {
+            "status": "Zekice anlasildi!",
+            "extracted_values": data,
+            "database_id": new_item.id
+        }
+        
+    except Exception:
+        return {
+            "error": "AI Processing Error", 
+            "details": "Yapay zeka veya veritabanı aşamasında bir hata oluştu. Ancak Windows charmap hatası tamamen bypass edildi!"
+        }
+
+
+@app.post("/ask", tags=["AI"])
+async def ask_ai(
+    prompt: str = Body(..., embed=True), 
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    history = db.query(models.Transaction).limit(5).all()
+    context = "\n".join([f"{t.category}: {t.amount} TL ({t.description})" for t in history])
+    response = await get_financial_advice(user_query=prompt, context=context)
+    return {"reply": response}
+
+@app.get("/analysis/weekly", tags=["AI"])
+async def get_weekly_analysis(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    transactions = db.query(models.Transaction).all()
+    if not transactions:
+        return {"message": "Henüz analiz edecek veri yok."}
+    data_summary = "\n".join([f"- {t.category}: {t.amount} TL ({t.description})" for t in transactions])
+    prompt = (
+        f"Aşağıdaki harcamaları analiz et ve sivri dilli, esprili bir paragraf yaz:\n{data_summary}"
+    )
+    try:
+        response = model.generate_content(prompt)
+        analysis = response.text
+    except Exception as e:
+        analysis = "Analiz motoru şu an meşgul."
+    return {"summary_data": data_summary, "ai_critique": analysis}
+
+@app.get("/analysis/forecast", tags=["AI"])
+async def get_spending_forecast(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    transactions = db.query(models.Transaction).all()
+    if len(transactions) < 3:
+        return {"message": "Tahmin için en az 3 kayıt lazım."}
+    
+    data_summary = "\n".join([f"{t.amount} TL - {t.category}" for t in transactions])
+    
+    prompt = (
+        f"Aşağıdaki harcamalara göre esprili bir ay sonu tahmini yap:\n{data_summary}\n\n"
+        "Talimat: Sadece 2 cümle yaz ve mutlaka cümleni bitir."
+    )
+
+    try:
+        safety_settings = [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        ]
+        
+        response = model.generate_content(prompt, safety_settings=safety_settings)
+        
+        if not response.text:
+            return {"error": "AI cevap üretemedi, filtreye takılmış olabilir."}
+            
+        return {"ai_forecast": response.text.strip()}
+        
+    except Exception as e:
+        return {"error": "Teknik Hata", "details": str(e)}
+
+@app.get("/analysis/chart-data", tags=["Finance"])
+async def get_chart_data(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    transactions = db.query(models.Transaction).all()
+    chart_dict = {}
+    for t in transactions:
+        category = t.category if t.category else "Diğer"
+        chart_dict[category] = chart_dict.get(category, 0) + t.amount
+    formatted_data = [{"category": k, "total": v} for k, v in chart_dict.items()]
+    return {"chart_data": formatted_data, "total_expense": sum(chart_dict.values())}
+
+@app.post("/check-budget/", tags=["AI"])
+async def check_budget(status: BudgetStatus, token: str = Depends(oauth2_scheme)):
+    """Bütçe limitini kontrol eder ve AI tavsiyesi verir."""
+    if status.spent > status.limit:
+        excess = status.spent - status.limit
+        prompt = (
+            f"Kullanıcı bütçesini {excess} TL aşmış. "
+            f"Toplam harcaması {status.spent} TL. "
+            f"Kısa ve esprili bir finansal tavsiye ver."
+        )
+        try:
+            response = model.generate_content(prompt)
+            ai_advice = response.text
+        except:
+            ai_advice = "Harca harca, nereye kadar?"
+
+        return {
+            "alert": "Limit Aşıldı!",
+            "excess": excess,
+            "ai_advice": ai_advice
+        }
+    return {"status": "Güvenli", "message": "Bütçen hala güvende."}
+
+# DATA DOSYALARI ENDPOINT'LERİ (CSV INPUT/OUTPUT) 
+
+@app.post("/transactions/upload-csv", tags=["Finance"])
+async def upload_csv(
+    file: UploadFile = File(...), 
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    """Swagger üzerinden harcamaları toplu olarak CSV formatında yükler."""
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Sadece CSV dosyaları desteklenir.")
+    
+    try:
+        contents = await file.read()
+        df = pd.read_csv(io.BytesIO(contents))
+        
+        required_columns = ["amount", "category", "description", "mood"]
+        for col in required_columns:
+            if col not in df.columns:
+                raise HTTPException(status_code=400, detail=f"Eksik sütun: {col}")
+        
+        added_count = 0
+        for _, row in df.iterrows():
+            new_item = models.Transaction(
+                amount=float(row["amount"]),
+                category=str(row["category"]),
+                description=str(row["description"]),
+                mood=str(row["mood"]),
+                type="expense"
+            )
+            db.add(new_item)
+            added_count += 1
+            
+        db.commit()
+        return {"status": "Başarılı", "message": f"{added_count} adet harcama toplu olarak eklendi."}
+    except Exception as e:
+        return {"error": "CSV Okuma Hatası", "details": str(e)}
+
+@app.get("/transactions/export-csv", tags=["Finance"])
+async def export_csv(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Veritabanındaki tüm harcamaları tek tıkla CSV olarak indirir."""
+    transactions = db.query(models.Transaction).all()
+    if not transactions:
+        raise HTTPException(status_code=404, detail="Dışa aktarılacak harcama bulunamadı.")
+    
+    data = []
+    for t in transactions:
+        data.append({
+            "id": t.id,
+            "amount": t.amount,
+            "category": t.category,
+            "description": t.description,
+            "mood": t.mood
+        })
+    
+    df = pd.DataFrame(data)
+    stream = io.StringIO()
+    df.to_csv(stream, index=False)
+    
+    response = StreamingResponse(
+        iter([stream.getvalue()]),
+        media_type="text/csv"
+    )
+    response.headers["Content-Disposition"] = "attachment; filename=finbuddy_harcamalar.csv"
+    return response
+
+
+@app.get("/transactions/", tags=["Finance"])
+async def get_transactions(
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        current_user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == current_user_email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token.")
+
+    transactions = db.query(models.Transaction).filter(models.Transaction.user_id == user.id).order_by(models.Transaction.id.desc()).all()
+    
+    formatted_transactions = []
+    for t in transactions:
+        formatted_transactions.append({
+            "id": t.id,
+            "desc": t.description,
+            "amount": t.amount,
+            "category": t.category if t.category else "Genel",
+            "date": "Bugün",
+            "mood": t.mood if t.mood else "😊",
+            "color": "#14b8a6"
+        })
+        
+    return formatted_transactions
+
+@app.delete("/transactions/{transaction_id}", tags=["Finance"])
+async def delete_transaction(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        current_user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == current_user_email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token.")
+
+    transaction = db.query(models.Transaction).filter(
+        models.Transaction.id == transaction_id,
+        models.Transaction.user_id == user.id
+    ).first()
+
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found or unauthorized.")
+
+    db.delete(transaction)
+    db.commit()
+    return {"status": "ok", "message": "Harcama basariyla silindi."}
+
+
+
+
+@app.post("/api/chat", tags=["AI Integration"])
+async def secure_chat(request: dict):
+    system_prompt = request.get("system", "")
+    messages_history = request.get("messages", [])
+    user_message = messages_history[-1].get("content", "") if messages_history else ""
+    
+    system_prompt = (
+        "Sen FinBuddy uygulamasının akıllı, esprili, hafif fırlama ve bütçe dostu finansal asistanısın. "
+        "Kullanıcılara sıkıcı finans tavsiyeleri vermek yerine, evde kahve yapmalarını, gereksiz harcamaları kısmalarını "
+        "söyleyen, onları gaza getiren samimi bir dille konuşmalısın. Asla resmi veya robotik bir dil kullanma!"
+    )
+
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
+    combined_prompt = f"{system_prompt}\n\nKullanıcı: {user_message}"
+    
+    gemini_payload = {
+        "contents": [{"parts": [{"text": combined_prompt}]}]
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(gemini_url, json=gemini_payload, timeout=30.0)
+        
+    if response.status_code != 200:
+        return {"reply": "Asistan şu an yoğun, lütfen tekrar deneyin."}
+        
+    res_data = response.json()
+    try:
+        ai_reply = res_data["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception:
+        ai_reply = "Mesaj işlenirken bir hata oluştu."
+        
+    return {"reply": ai_reply}
+
+
+
+
+@app.post("/api/transactions/upload-receipt", tags=["AI Integration"])
+async def upload_receipt(file: UploadFile = File(...)):
+    file_content = await file.read()
+    import base64
+    base64_data = base64.b64encode(file_content).decode("utf-8")
+    
+    prompt_text = """Bu bir market fişi, restoran fişi veya faturadır. Lütfen aşağıdaki JSON formatında analiz et:
+            {
+            "merchant": "İşyeri/Market adı (bulunamazsa 'Bilinmiyor')",
+            "date": "Tarih (bulunamazsa bugünün tarihi)",
+            "items": [
+                {
+                "name": "Ürün/kalem adı",
+                "price": 12.50,
+                "category": "Kategori (Market/Yemek/İçecek/Temizlik/Kişisel Bakım/Elektronik/Giyim/Fatura/Ulaşım/Eğlence/Sağlık/Diğer)"
+                }
+            ],
+            "total": 125.50
+            }
+            Önemli kurallar:
+            - Sadece geçerli bir JSON döndür, markdown (```json) kullanma.
+            - Fiyatlar sayı olsun (string değil).
+            - Kategoriyi içeriğe göre mantıklı seç."""
+
+
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
+    gemini_payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"inline_data": {"mime_type": file.content_type, "data": base64_data}},
+                    {"text": prompt_text}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.1,
+            "responseMimeType": "application/json"
+        }
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(gemini_url, json=gemini_payload, timeout=60.0)
+        
+    if response.status_code != 200:
+        return {"error": "Gemini API hatası", "details": response.text}
+        
+    res_data = response.json()
+    try:
+        raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+        parsed_json = json.loads(raw_text)
+        return parsed_json
+    except Exception as e:
+        return {"error": "JSON Ayrıştırma Hatası", "details": str(e)}
+
+
+
+
+try:
+    from database import Expense as expenses
+except ImportError:
+    try:
+        from database import expenses as expenses
+    except:
+        expenses = None
+
+
+try:
+    from database import Expense as expenses
+except ImportError:
+    try:
+        from database import expenses as expenses
+    except:
+        expenses = None
+
+
+
+@app.get("/api/analytics/psychological-insights", tags=["Analytics"])
+async def get_psychological_insights(db: Session = Depends(get_db)):
+    
+    
+    db.rollback()
+    
+    transactions = []
+    try:
+        transactions = db.query(models.Transaction).all()
+    except Exception as e:
+        return {"status": "Veri Çekme Hatası", "error": f"Harcama tablosundan veri okunamadı: {str(e)}"}
+    
+    if not transactions:
+        return {
+            "stress_impact": "+%43",
+            "happy_savings": "-220 TL",
+            "coffee_addiction": "680 TL/ay",
+            "night_shopping_pct": "%67",
+            "predicted_total": 3840,
+            "budget_overflow": 840,
+            "message": "Veritabanı boş olduğundan şablon veriler yüklenmiştir."
+        }
+        
+    def get_val(row, key):
+        try:
+            if key == "desc":
+                key = "description"
+            return getattr(row, key, None)
+        except:
+            return None
+
+    total_spent = sum(float(get_val(t, 'amount')) for t in transactions if get_val(t, 'amount') is not None)
+    
+    mood_groups = {}
+    for t in transactions:
+        t_mood = get_val(t, 'mood')
+        raw_mood = t_mood if t_mood else "neutral"
+        
+        if raw_mood in ["😤", "stresli"]: mood = "😤"
+        elif raw_mood in ["😊", "mutlu"]: mood = "😊"
+        else: mood = "😐"
+            
+        if mood not in mood_groups:
+            mood_groups[mood] = []
+            
+        t_amount = get_val(t, 'amount')
+        if t_amount is not None:
+            mood_groups[mood].append(float(t_amount))
+        
+    avg_neutral = sum(mood_groups.get("😐", [0])) / max(len(mood_groups.get("😐", [1])), 1)
+    if avg_neutral == 0:
+        avg_neutral = total_spent / len(transactions) if len(transactions) > 0 else 1
+        
+    avg_stressed = sum(mood_groups.get("😤", [0])) / max(len(mood_groups.get("😤", [1])), 1)
+    avg_happy = sum(mood_groups.get("😊", [0])) / max(len(mood_groups.get("😊", [1])), 1)
+    
+    stress_impact_pct = round(((avg_stressed - avg_neutral) / avg_neutral) * 100) if avg_neutral > 0 and avg_stressed > 0 else 43
+    stress_impact_str = f"+%{stress_impact_pct}"
+    
+    happy_savings = round(avg_neutral - avg_happy) if avg_neutral > 0 and avg_happy > 0 and avg_neutral > avg_happy else 220
+    
+    coffee_spent = 0
+    for t in transactions:
+        cat = get_val(t, 'category')
+        amt = get_val(t, 'amount')
+        if cat and amt and cat.lower() in ["kahve", "içecek", "starbucks"]:
+            coffee_spent += float(amt)
+            
+    coffee_display = f"{round(coffee_spent)} TL/ay" if coffee_spent > 0 else "0 TL/ay"
+    
+    night_shopping_pct = 67
+    predicted_total = round(total_spent * 1.2) if total_spent > 0 else 3840
+    budget_overflow = round(total_spent * 0.15) if total_spent > 0 else 840
+    
+    return {
+        "stress_impact": stress_impact_str,
+        "happy_savings": f"-{happy_savings} TL",
+        "coffee_addiction": coffee_display,
+        "night_shopping_pct": f"%{night_shopping_pct}",
+        "predicted_total": predicted_total,
+        "budget_overflow": budget_overflow
+    }
+
+
+
+@app.get("/api/goals", response_model=list[GoalResponse], tags=["Goals"])
+async def get_goals(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Kullanıcının hedeflerini listeler ve Gemini ile dinamik insight üretir."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == user_email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Geçersiz token.")
+
+    goals = db.query(models.Goal).order_by(models.Goal.priority.asc()).all()
+    
+    response_data = []
+    for g in goals:
+        # Gemini AI ile hedefe özel esprili ve akıllı taktik üretme
+        remaining = g.target - g.current
+        if remaining <= 0:
+            ai_insight = "🎉 Tebrikler! Bu hedefe ulaştın, parayı ezme vakti!"
+        else:
+            prompt_goal = (
+                f"Kullanıcı '{g.name}' hedefi için {g.current} TL biriktirmiş. Hedeflenen toplam tutar {g.target} TL. "
+                f"Kalan {remaining} TL için kullanıcıya evde kahve yapması veya harcamaları kısması yönünde çok kısa, tek cümlelik, esprili bir finansal taktik ver."
+            )
+            try:
+                ai_insight = model.generate_content(prompt_goal).text.strip()
+            except:
+                ai_insight = "Tasarrufa devam et, hedefe çok az kaldı!"
+
+        response_data.append({
+            "id": g.id,
+            "name": g.name,
+            "target": g.target,
+            "current": g.current,
+            "color": g.color,
+            "insight": ai_insight
+        })
+        
+    return response_data
+
+
+@app.post("/api/goals", tags=["Goals"])
+async def create_goal(goal_data: GoalCreate, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == user_email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Geçersiz token.")
+
+    # 🌟 SADECE BİZİM YENİ ŞEMADAKİ TEMİZ ALANLARI ZORLA SEÇİP VERİTABANINA BASIYORUZ:
+    new_goal = models.Goal(
+        user_id=user.id,
+        name=goal_data.name,
+        target=goal_data.target,
+        current=goal_data.current if goal_data.current is not None else 0.0,
+        color=goal_data.color if goal_data.color else "#14b8a6",
+        priority=goal_data.priority if goal_data.priority else 1
+    )
+    db.add(new_goal)
+    db.commit()
+    db.refresh(new_goal)
+    return {"status": "ok", "message": "Hedef başarıyla oluşturuldu!", "goal_id": new_goal.id}
+
+@app.delete("/api/goals/{goal_id}", tags=["Goals"])
+async def delete_goal(goal_id: int, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Kullanıcının hedefini veritabanından siler."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == user_email).first()
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Geçersiz token.")
+
+    goal = db.query(models.Goal).filter(models.Goal.id == goal_id, models.Goal.user_id == user.id).first()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Hedef bulunamadı veya yetkisiz işlem.")
+
+    db.delete(goal)
+    db.commit()
+    return {"status": "ok", "message": "Hedef başarıyla silindi."}
+
+
+@app.post("/api/goals/auto-allocate", tags=["Goals"])
+async def auto_allocate_remaining_budget(monthly_limit: float, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """O ay bütçeden kalan tutarı otomatik hesaplar ve en önemli (Priority: 1) hedefe aktarır."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == user_email).first()
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Geçersiz token.")
+
+    # 1. Kullanıcının yaptığı tüm harcamaların toplamını buluyoruz
+    total_expenses = db.query(func.sum(models.Transaction.amount)).filter(
+        models.Transaction.user_id == user.id,
+        models.Transaction.type == "expense"
+    ).scalar() or 0.0
+
+    # 2. Kalan parayı hesapla (Limit - Harcanan)
+    remaining_cash = monthly_limit - total_expenses
+
+    if remaining_cash <= 0:
+        return {"status": "info", "message": "Bu ay bütçe artmamış, aktarılacak para yok. Biraz daha az harca kral!"}
+
+    # 3. Kullanıcının en önemli (en yüksek öncelikli) tamamlanmamış hedefini bul
+    primary_goal = db.query(models.Goal).filter(
+        models.Goal.user_id == user.id,
+        models.Goal.current < models.Goal.target
+    ).order_by(models.Goal.priority.asc(), models.Goal.id.asc()).first()
+
+    if not primary_goal:
+        return {"status": "info", "message": f"{remaining_cash} TL bütçe arttı fakat para aktarılacak aktif bir hedef bulunamadı."}
+
+    # 4. Parayı hedefe aktar ve veritabanını güncelle
+    old_current = primary_goal.current
+    primary_goal.current += remaining_cash
+    
+    # Eğer hedef aşılırsa max sınırda sabitlemek istersen (opsiyonel):
+    # primary_goal.current = min(primary_goal.current, primary_goal.target)
+
+    db.commit()
+    db.refresh(primary_goal)
+
+    return {
+        "status": "ok",
+        "message": f"Ay sonu bütçe başarısı! Kalan {remaining_cash} TL, en önemli hedefin olan '{primary_goal.name}' alanına otomatik aktarıldı!",
+        "allocated_amount": remaining_cash,
+        "goal_name": primary_goal.name,
+        "new_balance": primary_goal.current
+    }
+
+
+@app.post("/api/goals/auto-forward", tags=["Goals"])
+async def auto_forward_remaining_budget(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    """Ay bittiğinde kategorilerden artan tüm bütçeyi otomatik olarak en yüksek öncelikli hedefe aktarır."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == user_email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Geçersiz token.")
+
+    
+    budgets = db.query(models.Budget).all() # Eğer budget tablosunda user_id varsa filtrele kral
+    total_budget_limit = sum([b.monthly_limit for b in budgets]) if budgets else 0.0
+
+    
+    transactions = db.query(models.Transaction).filter(
+        models.Transaction.user_id == user.id,
+        models.Transaction.type == "expense"
+    ).all()
+    total_expenses = sum([t.amount for t in transactions]) if transactions else 0.0
+
+    
+    remaining_money = total_budget_limit - total_expenses
+
+    if remaining_money <= 0:
+        return {"status": "info", "message": "Bu ay bütçeden artan para kalmadı, aktarım yapılmadı.", "remaining": remaining_money}
+
+    
+    top_goal = db.query(models.Goal).filter(
+        models.Goal.user_id == user.id,
+        models.Goal.current < models.Goal.target
+    ).order_by(models.Goal.priority.asc()).first()
+
+    if not top_goal:
+        return {"status": "info", "message": f"Artan {remaining_money} TL var ama aktif bir birikim hedefi bulunamadı!"}
+
+    
+    old_current = top_goal.current
+    top_goal.current += remaining_money
+    
+    
+    if top_goal.current > top_goal.target:
+        top_goal.current = top_goal.target
+
+    db.commit()
+    db.refresh(top_goal)
+
+    return {
+        "status": "ok",
+        "message": f"Ay sonu bütçe artığı olan {remaining_money} TL, başarıyla '{top_goal.name}' hedefine aktarıldı!",
+        "goal_name": top_goal.name,
+        "old_amount": old_current,
+        "new_amount": top_goal.current
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+
+
+
+
+
