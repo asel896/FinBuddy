@@ -118,3 +118,5 @@ const GoalForm = ({ onAddGoal }) => {
 };
 
 export default GoalForm;
+
+{/* Önizleme — GoalsPanel'deki card tasarımıyla birebir aynı */}
